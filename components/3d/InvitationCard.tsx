@@ -236,7 +236,7 @@ export default function MobileInvitation({ guestName = "" }: { guestName?: strin
 
                             <EffectComposer enableNormalPass={false}>
                                 <Bloom luminanceThreshold={1.1} mipmapBlur intensity={0.5} radius={0.4} />
-                                <Noise opacity={0.005} /> 
+                                <Noise opacity={0.0005} /> 
                                 <ChromaticAberration offset={new THREE.Vector2(0.0005, 0.0005)} radialModulation={false} modulationOffset={0} />
                                 <Vignette offset={0.3} darkness={0.6} />
                             </EffectComposer>
