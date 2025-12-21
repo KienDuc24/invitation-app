@@ -1,47 +1,32 @@
-"use client";
-
-import { useEffect, useState } from "react";
-import Invitation3D from "@/components/3d/InvitationCard";
-import { useRouter } from "next/navigation";
+// app/page.tsx
+import { Sparkles } from "lucide-react";
 
 export default function Home() {
-  const [guestName, setGuestName] = useState<string | null>(null);
-  const router = useRouter();
-
-  useEffect(() => {
-    // 1. Kiểm tra xem đã đăng nhập chưa
-    const name = localStorage.getItem("guest_name");
-    
-    if (!name) {
-      // Nếu chưa có tên -> Đá về trang login
-      router.push("/login");
-    } else {
-      setGuestName(name);
-    }
-  }, [router]);
-
-  // Nếu chưa load xong tên thì hiện màn hình đen (hoặc loading)
-  if (!guestName) return <div className="min-h-screen bg-black" />;
-
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-4 bg-black">
-      <div className="z-10 max-w-5xl w-full flex flex-col items-center">
-        <h1 className="text-4xl md:text-6xl font-bold text-center mb-8 font-cinzel tracking-widest uppercase relative z-10">
-          <span className="bg-gradient-to-b from-[#ffd700] via-[#f0e68c] to-[#b8860b] bg-clip-text text-transparent drop-shadow-[0_0_15px_rgba(255,215,0,0.5)]">
-            Lễ Tốt Nghiệp
-          </span>
+    <main className="flex min-h-screen flex-col items-center justify-center p-4 bg-[#050505] text-center font-sans">
+      <div className="relative z-10 p-8 border border-[#d4af37]/20 rounded-2xl bg-[#d4af37]/5 backdrop-blur-sm max-w-md w-full">
+        
+        {/* Decor góc */}
+        <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-[#d4af37]" />
+        <div className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-[#d4af37]" />
+        <div className="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-[#d4af37]" />
+        <div className="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-[#d4af37]" />
+
+        <Sparkles className="w-12 h-12 text-[#d4af37] mx-auto mb-6 animate-pulse" />
+        
+        <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-b from-[#fadd7d] to-[#aa8e26] mb-4 uppercase tracking-widest">
+          Lễ Tốt Nghiệp 2025
         </h1>
         
-        {/* Khung chứa thiệp 3D */}
-        <div className="w-full max-w-3xl border border-white/10 rounded-xl p-1 bg-gradient-to-b from-white/10 to-transparent backdrop-blur-sm shadow-[0_0_50px_-10px_rgba(255,215,0,0.3)]">
-          {/* Truyền tên thật vào thiệp */}
-          <Invitation3D guestName={guestName} />
-        </div>
+        <div className="h-[1px] w-20 bg-[#d4af37]/30 mx-auto my-6" />
+        
+        <p className="text-gray-400 mb-6 font-light">
+          Vui lòng truy cập bằng <span className="text-white font-medium">đường dẫn riêng</span> được gửi trong thiệp mời của bạn.
+        </p>
 
-        <div className="mt-8 text-center text-gray-400 animate-pulse">
-          <p className="text-sm">Chào mừng, {guestName}</p>
-          <p className="text-xs mt-2 opacity-50">Di chuột hoặc xoay điện thoại để xem thiệp</p>
-        </div>
+        <p className="text-xs text-[#d4af37]/50 uppercase tracking-[0.2em]">
+          Bùi Đức Kiên
+        </p>
       </div>
     </main>
   );
