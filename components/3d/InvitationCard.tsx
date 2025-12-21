@@ -165,7 +165,7 @@ const PortalOverlay = ({ children }: { children: React.ReactNode }) => {
 };
 
 // --- 7. GIAO DIỆN CHÍNH ---
-export default function MobileInvitation({ guestName = "Nguyen Van A" }: { guestName?: string }) {
+export default function MobileInvitation({ guestName = "" }: { guestName?: string }) {
   const [isOpen, setIsOpen] = useState(false);
   const [isPortrait, setIsPortrait] = useState(false);
 
