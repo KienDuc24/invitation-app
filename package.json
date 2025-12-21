@@ -16,7 +16,6 @@
     "next": "16.1.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "react-three-fiber": "^6.0.13",
     "three": "^0.182.0"
   },
   "devDependencies": {
