@@ -2,15 +2,13 @@
 
 import { useRef, useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { Canvas, useThree } from "@react-three/fiber"; // Đã bỏ useFrame thừa
 import {
   Text,
-  Text3D, // Giữ lại nếu muốn dùng cho chữ khác, nhưng Tên Khách sẽ dùng Text thường
   Environment,
   Float,
   ContactShadows,
   RoundedBox,
-  Center,
   Sparkles,
   OrbitControls,
   Stars,
@@ -19,7 +17,6 @@ import * as THREE from "three";
 import {
   EffectComposer,
   Bloom,
-  DepthOfField,
   Vignette,
   ChromaticAberration,
   Noise,
@@ -28,13 +25,10 @@ import { X, Sparkles as SparklesIcon, Smartphone, RotateCcw } from "lucide-react
 
 // --- 1. CẤU HÌNH ---
 const MY_NAME = "Bùi Đức Kiên";
-
-// Sử dụng font Arimo Bold có sẵn trong thư mục public của bạn để hỗ trợ Tiếng Việt chuẩn
-// Đường dẫn này dựa trên cấu trúc file bạn đã upload
 const FONT_VN_BOLD = "/fonts/Arimo/static/Arimo-Bold.ttf"; 
 const FONT_VN_REGULAR = "/fonts/Arimo/static/Arimo-Regular.ttf";
 
-// --- 2. VẬT LIỆU (MATERIALS) ---
+// --- 2. VẬT LIỆU ---
 function PremiumGoldMaterial() {
   return (
     <meshPhysicalMaterial
@@ -68,60 +62,49 @@ function Card({ guestName }: { guestName: string }) {
   // Scale để thiệp luôn vừa khít màn hình
   const scale = Math.min(viewport.width / 7, viewport.height / 4) * 0.9;
 
-  useFrame((state) => {
-    if (group.current) {
-        // Hiệu ứng nhấp nhô nhẹ nhàng
-        group.current.position.y = Math.sin(state.clock.elapsedTime / 1.5) * 0.1; 
-    }
-  });
+  // ❌ ĐÃ XÓA: Đoạn useFrame gây xung đột rung lắc
+  // Để thằng <Float> bên dưới tự lo việc bay lượn nhẹ nhàng
 
   return (
-    <Float speed={2} rotationIntensity={0.2} floatIntensity={0.5} floatingRange={[-0.1, 0.1]}>
+    // ✅ ĐÃ CHỈNH: Giảm speed từ 2 -> 1.5, rotationIntensity từ 0.2 -> 0.1 cho đỡ chóng mặt
+    <Float speed={1.5} rotationIntensity={0.1} floatIntensity={0.4} floatingRange={[-0.05, 0.05]}>
       <group ref={group} scale={scale}>
         
         {/* === A. PHẦN CỨNG CỦA THIỆP === */}
-        
-        {/* 1. Đế viền vàng sang trọng */}
         <RoundedBox args={[6.05, 3.55, 0.02]} radius={0.12} smoothness={4} position={[0, 0, -0.03]}>
           <PremiumGoldMaterial />
         </RoundedBox>
 
-        {/* 2. Thân giấy đen nhung */}
         <RoundedBox args={[6, 3.5, 0.05]} radius={0.1} smoothness={4} position={[0, 0, 0]}>
           <VelvetBlackMaterial />
         </RoundedBox>
 
         {/* === B. NỘI DUNG CHỮ === */}
         <group position={[0, 0, 0.06]}>
-          
-          {/* 1. Tiêu đề: TRÂN TRỌNG KÍNH MỜI */}
           <Text 
             position={[0, 1.1, 0]} 
             fontSize={0.14} 
             color="#aaaaaa" 
             letterSpacing={0.2} 
-            font={FONT_VN_REGULAR} // Dùng font Regular
+            font={FONT_VN_REGULAR}
           >
             TRÂN TRỌNG KÍNH MỜI
           </Text>
 
-          {/* 2. TÊN KHÁCH MỜI (Đã sửa lỗi font & xuống dòng) */}
-          {/* Sử dụng component Text thay vì Text3D để hỗ trợ maxWidth (xuống dòng) và font .ttf */}
           <Text
             position={[0, 0.25, 0]}
-            fontSize={0.6}           // Cỡ chữ lớn
-            color="#fadd7d"          // Màu vàng kim
-            font={FONT_VN_BOLD}      // Font Bold hỗ trợ tiếng Việt
-            maxWidth={5.5}           // Tự động xuống dòng nếu dài hơn 5.5 đơn vị
-            textAlign="center"       // Căn giữa
-            lineHeight={1}           // Khoảng cách dòng
-            outlineWidth={0.005}     // Viền nhẹ để chữ sắc nét hơn
-            outlineColor="#b8860b"   // Màu viền vàng đậm
+            fontSize={0.6}
+            color="#fadd7d"
+            font={FONT_VN_BOLD}
+            maxWidth={5.5}
+            textAlign="center"
+            lineHeight={1}
+            outlineWidth={0.005}
+            outlineColor="#b8860b"
           >
             {guestName}
           </Text>
 
-          {/* 3. Lời nhắn */}
           <Text 
             position={[0, -0.6, 0]} 
             fontSize={0.14} 
@@ -134,7 +117,6 @@ function Card({ guestName }: { guestName: string }) {
             Tới tham dự Lễ Tốt Nghiệp 2025
           </Text>
 
-          {/* 4. Tên chủ nhân: Bùi Đức Kiên */}
           <Text 
             position={[0, -1.2, 0]} 
             fontSize={0.28} 
@@ -146,14 +128,13 @@ function Card({ guestName }: { guestName: string }) {
           </Text>
         </group>
         
-        {/* Hiệu ứng bụi vàng bay lấp lánh */}
         <Sparkles count={60} scale={[7, 5, 4]} size={3} speed={0.4} opacity={0.5} color="#ffeaae" />
       </group>
     </Float>
   );
 }
 
-// --- 4. COMPONENT: MÀN HÌNH YÊU CẦU XOAY (Mobile Landscape) ---
+// --- 4. COMPONENT XOAY MÀN HÌNH ---
 const RotatePrompt = () => {
     return (
         <div className="absolute inset-0 z-[60] bg-black/95 flex flex-col items-center justify-center text-center p-6 backdrop-blur-md animate-in fade-in duration-500">
@@ -161,18 +142,13 @@ const RotatePrompt = () => {
                 <Smartphone className="w-16 h-16 text-gray-500 animate-pulse" />
                 <RotateCcw className="absolute -right-4 -top-2 w-10 h-10 text-[#d4af37] animate-spin-slow" />
             </div>
-            
-            <h3 className="text-[#d4af37] text-xl font-bold uppercase tracking-widest mb-2">
-                Trải nghiệm tốt nhất
-            </h3>
-            <p className="text-gray-400 text-sm max-w-[250px] leading-relaxed">
-                Vui lòng <span className="text-white font-bold">xoay ngang điện thoại</span> để xem thiệp mời trọn vẹn.
-            </p>
+            <h3 className="text-[#d4af37] text-xl font-bold uppercase tracking-widest mb-2">Trải nghiệm tốt nhất</h3>
+            <p className="text-gray-400 text-sm max-w-[250px] leading-relaxed">Vui lòng <span className="text-white font-bold">xoay ngang điện thoại</span> để xem thiệp mời trọn vẹn.</p>
         </div>
     );
 };
 
-// --- 5. PORTAL (Để hiển thị full màn hình đè lên mọi thứ) ---
+// --- 5. PORTAL ---
 const PortalOverlay = ({ children }: { children: React.ReactNode }) => {
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
@@ -184,15 +160,13 @@ const PortalOverlay = ({ children }: { children: React.ReactNode }) => {
   return createPortal(children, document.body);
 };
 
-// --- 6. MAIN COMPONENT (GIAO DIỆN CHÍNH) ---
+// --- 6. MAIN COMPONENT ---
 export default function MobileInvitation({ guestName = "" }: { guestName?: string }) {
   const [isOpen, setIsOpen] = useState(false);
   const [isPortrait, setIsPortrait] = useState(false);
 
   useEffect(() => {
-    const checkOrientation = () => {
-        setIsPortrait(window.innerHeight > window.innerWidth);
-    };
+    const checkOrientation = () => { setIsPortrait(window.innerHeight > window.innerWidth); };
     checkOrientation();
     window.addEventListener('resize', checkOrientation);
     return () => window.removeEventListener('resize', checkOrientation);
@@ -202,12 +176,10 @@ export default function MobileInvitation({ guestName = "" }: { guestName?: strin
     <PortalOverlay>
       <div className="fixed inset-0 z-[99999] bg-[#020202] w-full h-[100dvh] overflow-hidden font-sans">
         
-        {/* === LANDING PAGE (Màn hình Chào) === */}
+        {/* LANDING PAGE */}
         <div className={`absolute inset-0 z-20 flex flex-col items-center justify-center transition-all duration-1000 ${isOpen ? 'opacity-0 pointer-events-none scale-110' : 'opacity-100 scale-100'}`}>
              <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_#1a1a1a_0%,_#000_100%)]" />
-             
              <div className="relative z-10 w-full max-w-sm mx-6 p-1">
-                {/* Khung viền trang trí */}
                 <div className="absolute inset-0 border border-[#d4af37]/30 rounded pointer-events-none" />
                 <div className="absolute top-0 left-0 w-6 h-6 border-t-2 border-l-2 border-[#d4af37] rounded-tl" />
                 <div className="absolute top-0 right-0 w-6 h-6 border-t-2 border-r-2 border-[#d4af37] rounded-tr" />
@@ -217,7 +189,6 @@ export default function MobileInvitation({ guestName = "" }: { guestName?: strin
                 <div className="flex flex-col items-center py-16 px-6 text-center space-y-10 backdrop-blur-[2px]">
                     <div className="space-y-4">
                         <p className="text-[#d4af37] text-sm tracking-[0.3em] uppercase opacity-90 font-medium">Trân trọng kính mời</p>
-                        {/* Tên khách ở màn hình ngoài */}
                         <h1 className="text-4xl md:text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-b from-[#fadd7d] to-[#aa8e26] drop-shadow-md leading-tight break-words max-w-full">
                             {guestName}
                         </h1>
@@ -225,52 +196,38 @@ export default function MobileInvitation({ guestName = "" }: { guestName?: strin
                     <div className="w-20 h-[1px] bg-[#d4af37]/50" />
                     <div className="space-y-3">
                         <p className="text-gray-400 text-xs uppercase tracking-widest font-semibold">Tham dự sự kiện</p>
-                        <h2 className="text-3xl text-white uppercase tracking-widest ">Lễ Tốt Nghiệp</h2>
+                        <h2 className="text-3xl text-white uppercase tracking-widest font-light">Lễ Tốt Nghiệp</h2>
                         <p className="text-[#d4af37] text-4xl font-extrabold pt-2">2025</p>
                     </div>
                     
-                    <button 
-                        onClick={() => setIsOpen(true)}
-                        className="group relative px-10 py-4 bg-[#d4af37]/10 border border-[#d4af37]/50 rounded-full hover:bg-[#d4af37]/20 transition-all active:scale-95 mt-6 shadow-[0_0_20px_rgba(212,175,55,0.15)]"
-                    >
+                    <button onClick={() => setIsOpen(true)} className="group relative px-10 py-4 bg-[#d4af37]/10 border border-[#d4af37]/50 rounded-full hover:bg-[#d4af37]/20 transition-all active:scale-95 mt-6 shadow-[0_0_20px_rgba(212,175,55,0.15)]">
                         <div className="flex items-center gap-3 text-[#d4af37] text-sm font-bold tracking-[0.2em] uppercase">
-                            <SparklesIcon size={18} />
-                            <span>Mở Thiệp</span>
+                            <SparklesIcon size={18} /><span>Mở Thiệp</span>
                         </div>
                     </button>
                 </div>
             </div>
         </div>
 
-        {/* === 3D VIEWER (Màn hình Thiệp 3D) === */}
+        {/* 3D VIEWER */}
         {isOpen && (
             <div className="absolute inset-0 z-30 animate-in fade-in duration-1000">
                 {isPortrait ? (
                     <RotatePrompt />
                 ) : (
                     <>
-                        <button 
-                            onClick={() => setIsOpen(false)}
-                            className="absolute top-6 right-6 z-50 p-3 rounded-full bg-white/10 text-white hover:bg-white/20 transition-all border border-white/5 backdrop-blur-md"
-                        >
+                        <button onClick={() => setIsOpen(false)} className="absolute top-6 right-6 z-50 p-3 rounded-full bg-white/10 text-white hover:bg-white/20 transition-all border border-white/5 backdrop-blur-md">
                             <X size={28} />
                         </button>
-
-                        <div className="absolute bottom-6 w-full text-center z-40 text-white/40 text-[10px] tracking-[0.4em] uppercase pointer-events-none">
-                            Chạm & Xoay để xem chi tiết
-                        </div>
+                        <div className="absolute bottom-6 w-full text-center z-40 text-white/40 text-[10px] tracking-[0.4em] uppercase pointer-events-none">Chạm & Xoay để xem chi tiết</div>
 
                         <Canvas shadows camera={{ position: [0, 0, 10], fov: 35 }} gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping }} dpr={[1, 1.5]}>
                             <color attach="background" args={['#020202']} />
                             <Stars radius={100} depth={50} count={1500} factor={4} saturation={0} fade speed={1} />
                             
-                            <OrbitControls 
-                                enableZoom={true} minDistance={6} maxDistance={15} 
-                                autoRotate autoRotateSpeed={1} enablePan={false} 
-                                maxPolarAngle={Math.PI / 1.5} minPolarAngle={Math.PI / 3} 
-                            />
+                            {/* AutoRotate chậm lại một chút cho mượt */}
+                            <OrbitControls enableZoom={true} minDistance={6} maxDistance={15} autoRotate autoRotateSpeed={0.8} enablePan={false} maxPolarAngle={Math.PI / 1.5} minPolarAngle={Math.PI / 3} />
                             
-                            {/* Ánh sáng sân khấu */}
                             <ambientLight intensity={0.2} />
                             <spotLight position={[5, 5, 8]} angle={0.4} penumbra={1} intensity={2} color="#ffeebb" castShadow />
                             <spotLight position={[-10, 2, -5]} angle={0.6} intensity={4} color="#4455ff" />
@@ -283,7 +240,8 @@ export default function MobileInvitation({ guestName = "" }: { guestName?: strin
 
                             <EffectComposer enableNormalPass={false}>
                                 <Bloom luminanceThreshold={1.1} mipmapBlur intensity={0.5} radius={0.4} />
-                                <Noise opacity={0.02} />
+                                {/* ✅ ĐÃ CHỈNH: Giảm noise từ 0.02 xuống 0.015 để bớt nhiễu */}
+                                <Noise opacity={0.005} /> 
                                 <ChromaticAberration offset={new THREE.Vector2(0.0005, 0.0005)} radialModulation={false} modulationOffset={0} />
                                 <Vignette offset={0.3} darkness={0.6} />
                             </EffectComposer>
