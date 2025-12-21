@@ -2,7 +2,7 @@
 
 import { useRef, useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { Canvas, useThree } from "@react-three/fiber"; // Đã bỏ useFrame thừa
+import { Canvas, useThree } from "@react-three/fiber";
 import {
   Text,
   Environment,
@@ -25,6 +25,7 @@ import { X, Sparkles as SparklesIcon, Smartphone, RotateCcw } from "lucide-react
 
 // --- 1. CẤU HÌNH ---
 const MY_NAME = "Bùi Đức Kiên";
+// Đường dẫn font có sẵn trong thư mục public của bạn
 const FONT_VN_BOLD = "/fonts/Arimo/static/Arimo-Bold.ttf"; 
 const FONT_VN_REGULAR = "/fonts/Arimo/static/Arimo-Regular.ttf";
 
@@ -59,14 +60,9 @@ function Card({ guestName }: { guestName: string }) {
   const group = useRef<THREE.Group>(null);
   const { viewport } = useThree();
   
-  // Scale để thiệp luôn vừa khít màn hình
   const scale = Math.min(viewport.width / 7, viewport.height / 4) * 0.9;
 
-  // ❌ ĐÃ XÓA: Đoạn useFrame gây xung đột rung lắc
-  // Để thằng <Float> bên dưới tự lo việc bay lượn nhẹ nhàng
-
   return (
-    // ✅ ĐÃ CHỈNH: Giảm speed từ 2 -> 1.5, rotationIntensity từ 0.2 -> 0.1 cho đỡ chóng mặt
     <Float speed={1.5} rotationIntensity={0.1} floatIntensity={0.4} floatingRange={[-0.05, 0.05]}>
       <group ref={group} scale={scale}>
         
@@ -128,7 +124,8 @@ function Card({ guestName }: { guestName: string }) {
           </Text>
         </group>
         
-        <Sparkles count={60} scale={[7, 5, 4]} size={3} speed={0.4} opacity={0.5} color="#ffeaae" />
+        {/* ✅ ĐÃ GIẢM: Giảm số lượng hạt từ 60 xuống 25 */}
+        <Sparkles count={25} scale={[7, 5, 4]} size={3} speed={0.4} opacity={0.5} color="#ffeaae" />
       </group>
     </Float>
   );
@@ -225,7 +222,6 @@ export default function MobileInvitation({ guestName = "" }: { guestName?: strin
                             <color attach="background" args={['#020202']} />
                             <Stars radius={100} depth={50} count={1500} factor={4} saturation={0} fade speed={1} />
                             
-                            {/* AutoRotate chậm lại một chút cho mượt */}
                             <OrbitControls enableZoom={true} minDistance={6} maxDistance={15} autoRotate autoRotateSpeed={0.8} enablePan={false} maxPolarAngle={Math.PI / 1.5} minPolarAngle={Math.PI / 3} />
                             
                             <ambientLight intensity={0.2} />
@@ -240,7 +236,6 @@ export default function MobileInvitation({ guestName = "" }: { guestName?: strin
 
                             <EffectComposer enableNormalPass={false}>
                                 <Bloom luminanceThreshold={1.1} mipmapBlur intensity={0.5} radius={0.4} />
-                                {/* ✅ ĐÃ CHỈNH: Giảm noise từ 0.02 xuống 0.015 để bớt nhiễu */}
                                 <Noise opacity={0.005} /> 
                                 <ChromaticAberration offset={new THREE.Vector2(0.0005, 0.0005)} radialModulation={false} modulationOffset={0} />
                                 <Vignette offset={0.3} darkness={0.6} />
