@@ -3,6 +3,9 @@ import { getGuestsFromSheet } from "@/lib/google-sheets";
 import { Metadata } from "next";
 import { notFound } from "next/navigation";
 
+export const revalidate = 0; // 👈 Thêm dòng này: Bắt buộc Web tải mới mỗi giây
+export const dynamic = 'force-dynamic'; // 👈 Thêm dòng này cho chắc chắn
+
 type Props = {
   params: Promise<{ guestId: string }>;
 };
@@ -23,18 +26,19 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function GuestPage({ params }: Props) {
   const { guestId } = await params;
-  
-  // Gọi Google Sheet lấy dữ liệu
-  const db = await getGuestsFromSheet();
-  const guest = db[guestId];
+  const guests = await getGuestsFromSheet();
+  const guest = guests[guestId];
+  console.log("Khách:", guest.name, "| Trạng thái:", guest.isConfirmed);
 
   if (!guest) {
     return notFound(); 
   }
 
-  return (
-    <main className="w-full h-screen bg-black">
-      <MobileInvitation guestName={guest.name} />
-    </main>
+ return (
+<MobileInvitation 
+      guestName={guest.name} 
+      guestId={guest.id}           // ✅ Sửa guestID -> guestId
+      isConfirmed={guest.isConfirmed}
+    />
   );
 }
