@@ -39,6 +39,8 @@ export default async function GuestPage({ params }: Props) {
       guestName={guest.name} 
       guestId={guest.id}           // ✅ Sửa guestID -> guestId
       isConfirmed={guest.isConfirmed}
+      initialAttendance={guest.attendance} // 👈 Truyền dữ liệu cũ (nếu có)
+      initialWish={guest.wish} // 👈 Truyền dữ liệu cũ (nếu có)
     />
   );
 }

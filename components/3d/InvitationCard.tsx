@@ -176,9 +176,11 @@ interface InvitationProps {
     guestName?: string;
     guestId?: string;       // Nhận ID
     isConfirmed?: boolean;  // Nhận trạng thái
+    initialAttendance?: string; // 👇 Thêm dòng này
+    initialWish?: string;       // 👇 Thêm dòng này
 }
 
-export default function MobileInvitation({ guestName = "", guestId = "", isConfirmed = false }: InvitationProps) {
+export default function MobileInvitation({ guestName = "", guestId = "", isConfirmed = false, initialAttendance = "", initialWish = "" }: InvitationProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isPortrait, setIsPortrait] = useState(false);
   const [isRsvpOpen, setIsRsvpOpen] = useState(false);
@@ -202,7 +204,9 @@ export default function MobileInvitation({ guestName = "", guestId = "", isConfi
                 defaultName={guestName} 
                 guestId={guestId}
                 hasConfirmed={isConfirmed}
-                onClose={() => setIsRsvpOpen(false)} 
+                initialAttendance={initialAttendance} 
+                initialWish={initialWish}
+                onClose={() => setIsRsvpOpen(false)}
             />
         )}
 

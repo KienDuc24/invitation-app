@@ -6,7 +6,9 @@ const SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRQ-umIuRyemV
 export type GuestInfo = {
   id: string;
   name: string;
-  isConfirmed: boolean; // Trạng thái xác nhận (Đã RSVP hay chưa)
+  isConfirmed: boolean;
+  attendance?: string; // 👇 Thêm trường này: Lưu cụ thể là "Có tham dự" hay "Bận"
+  wish?: string;       // 👇 Thêm trường này: Lưu lời chúc cũ
 };
 
 export async function getGuestsFromSheet(): Promise<Record<string, GuestInfo>> {
@@ -66,7 +68,9 @@ export async function getGuestsFromSheet(): Promise<Record<string, GuestInfo>> {
               guestsDB[cleanId] = { 
                 id: cleanId,
                 name: row.name.toString().trim(),
-                isConfirmed: isConfirmed
+                isConfirmed: isConfirmed,
+                attendance: row.attendance ? row.attendance.toString().trim() : undefined, // Lấy nếu có
+                wish: row.wish ? row.wish.toString().trim() : undefined,                 // Lấy nếu có
               };
             }
           });
