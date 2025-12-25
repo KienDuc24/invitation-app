@@ -1,25 +1,29 @@
 import { ImageResponse } from 'next/og';
-import { GUESTS_DB } from '@/app/data/guests';
+import { getGuestsFromSheet } from '@/lib/google-sheets';
 
-// Cấu hình ảnh chuẩn
+// Cấu hình
 export const runtime = 'edge';
-export const alt = 'Thiệp mời Lễ Tốt Nghiệp';
-export const size = {
-  width: 1200,
-  height: 630,
-};
+export const size = { width: 1200, height: 630 };
 export const contentType = 'image/png';
 
-export default async function Image({ params }: { params: Promise<{ guestId: string }> }) {
-  // 1. Dùng await để lấy guestId (Fix lỗi Next.js 15)
-  const { guestId } = await params;
-  
-  // Tra cứu tên khách
-  const guest = GUESTS_DB[guestId];
-  const name = guest ? guest.name : 'Khách Quý';
+export default async function Image({ params }: { params: { guestId: string } }) {
+  // 1. Lấy guestId từ URL
+  const { guestId } = params;
 
-  // 2. Load font chữ (Dùng link trực tiếp cho ổn định)
-  const fontData = await fetch(new URL('https://github.com/google/fonts/raw/main/ofl/inter/Inter-Bold.ttf', import.meta.url)).then((res) => res.arrayBuffer());
+  // 2. Lấy dữ liệu mới nhất từ Google Sheet
+  const guests = await getGuestsFromSheet();
+  
+  // 3. Tìm khách (lưu ý: guestId trong sheet đã được clean nên ta cũng clean guestId từ URL)
+  const cleanId = guestId?.trim();
+  const guest = guests[cleanId];
+
+  // 4. Xử lý trường hợp không tìm thấy khách (Fallback)
+  const guestName = guest ? guest.name : "bạn mình";
+  const statusText = guest?.isConfirmed ? "Đã xác nhận tham gia" : "Trân trọng kính mời";
+
+  // 5. Load Font (Tùy chọn: Dùng font mặc định hoặc load từ file)
+  // Nếu bạn muốn load font Arimo từ public/fonts, cần dùng fetch(new URL(...))
+  // Ở đây mình dùng font mặc định hệ thống cho nhanh và ổn định trên Edge
 
   return new ImageResponse(
     (
@@ -31,69 +35,72 @@ export default async function Image({ params }: { params: Promise<{ guestId: str
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          backgroundColor: '#050505',
-          border: '20px solid #d4af37',
+          backgroundColor: '#0a0a0a', // Màu nền tối (hợp với theme)
+          backgroundImage: 'linear-gradient(to bottom right, #1a1a1a, #000000)',
           position: 'relative',
         }}
       >
-        {/* Nền Gradient */}
-        <div
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: 'radial-gradient(circle at center, #222 0%, #050505 100%)',
-          }}
-        />
+        {/* Viền trang trí */}
+        <div style={{
+          position: 'absolute',
+          top: 40, left: 40, right: 40, bottom: 40,
+          border: '2px solid #d4af37', // Màu vàng gold
+          opacity: 0.3,
+          borderRadius: 20,
+        }} />
 
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', zIndex: 10 }}>
-          <p style={{ color: '#d4af37', fontSize: 24, letterSpacing: 4, textTransform: 'uppercase', marginBottom: 20 }}>
-            Trân trọng kính mời
-          </p>
+        {/* Nội dung chính */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20 }}>
           
-          {/* Tên Khách */}
-          <h1
-            style={{
-              fontSize: 80,
-              // ĐÃ SỬA: Xóa dòng color: '#fff' thừa gây lỗi
-              background: 'linear-gradient(to bottom, #fadd7d, #aa8e26)',
-              backgroundClip: 'text',
-              // @ts-ignore: Bỏ qua lỗi check type của React cũ nếu có
-              WebkitBackgroundClip: 'text',
-              color: 'transparent', // Giữ lại dòng này để hiện màu gradient
-              margin: 0,
-              padding: '0 40px',
-              textAlign: 'center',
-              lineHeight: 1.2,
-              textShadow: '0 4px 10px rgba(0,0,0,0.5)',
-            }}
-          >
-            {name}
-          </h1>
+          <div style={{ 
+            color: '#d4af37', 
+            fontSize: 30, 
+            letterSpacing: '0.2em',
+            textTransform: 'uppercase',
+            fontWeight: 'bold'
+          }}>
+            Lễ Tốt Nghiệp 2026
+          </div>
 
-          <div style={{ width: 100, height: 2, background: '#d4af37', margin: '30px 0' }} />
+          <div style={{ 
+            color: 'white', 
+            fontSize: 80, 
+            fontWeight: 900, 
+            textAlign: 'center',
+            lineHeight: 1.1,
+            maxWidth: '900px',
+            textShadow: '0 4px 20px rgba(0,0,0,0.5)',
+            margin: '20px 0'
+          }}>
+            {guestName}
+          </div>
 
-          <p style={{ color: '#aaa', fontSize: 30, margin: 0 }}>
-            Tới tham dự Lễ Tốt Nghiệp 2025
-          </p>
-          <p style={{ color: '#666', fontSize: 24, marginTop: 10 }}>
-            Của Bùi Đức Kiên
-          </p>
+          <div style={{ 
+            backgroundColor: '#d4af37',
+            color: 'black',
+            padding: '10px 30px',
+            borderRadius: 50,
+            fontSize: 24,
+            fontWeight: 'bold',
+          }}>
+            {statusText}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div style={{
+          position: 'absolute',
+          bottom: 60,
+          color: '#666',
+          fontSize: 20,
+        }}>
+          invitation.kienduc.com
         </div>
       </div>
     ),
     {
       ...size,
-      fonts: [
-        {
-          name: 'Inter',
-          data: fontData,
-          style: 'normal',
-          weight: 700,
-        },
-      ],
+      // fonts: [...] // Nếu muốn thêm font custom
     }
   );
 }
