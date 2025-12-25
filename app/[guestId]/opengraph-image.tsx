@@ -1,7 +1,7 @@
 import { ImageResponse } from 'next/og';
-import { getGuestsFromSheet } from '@/lib/google-sheets';
+import { getGuestById } from '@/lib/supabase'; // 👈 Sửa import này
 
-// 1. Runtime nodejs để fetch được Google Sheet ổn định
+// 1. Runtime nodejs để fetch được dữ liệu
 export const runtime = 'nodejs'; 
 
 export const size = { width: 1200, height: 630 };
@@ -16,20 +16,18 @@ export default async function Image({ params }: Props) {
   // 3. QUAN TRỌNG: Phải await params trước khi lấy guestId
   const { guestId } = await params;
 
-  // Load dữ liệu
-  const guests = await getGuestsFromSheet();
-  
-  // 4. Xử lý ID: Decode, trim và lowercase để khớp chính xác nhất
+  // 4. Xử lý ID trước: Decode, trim để tránh lỗi
   const cleanId = decodeURIComponent(guestId || '').trim();
+
+  // 5. Gọi Supabase lấy thông tin ĐÚNG 1 KHÁCH (Thay vì lấy cả list)
+  const guest = await getGuestById(cleanId);
   
-  // Tìm khách (Lưu ý: guests[cleanId] phải khớp chính xác ID trong sheet)
-  const guest = guests[cleanId];
+  // Debug log: Xem logs trên Vercel để biết chính xác
+  console.log(`[OG-DEBUG] ID: "${cleanId}" | Kết quả: ${guest ? guest.name : "KHÔNG THẤY"}`);
 
-  // Debug log: Xem logs trên Vercel để biết chính xác code đang nhận được gì
-  console.log(`[OG-DEBUG] ID từ URL: "${cleanId}" | Tìm thấy: ${guest ? guest.name : "KHÔNG THẤY"}`);
-
-  // Fallback
+  // Fallback nếu không tìm thấy khách
   const guestName = guest ? guest.name : "Bạn tôi";
+  // Lưu ý: Đảm bảo biến isConfirmed khớp với những gì getGuestById trả về
   const statusText = guest?.isConfirmed ? "Đã xác nhận tham gia" : "Trân trọng kính mời";
 
   return new ImageResponse(

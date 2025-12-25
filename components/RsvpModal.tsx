@@ -2,9 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { X, Send, CheckCircle, Loader2, RefreshCw, Frown, Heart } from "lucide-react";
-import confetti from "canvas-confetti"; // Import thư viện pháo giấy
-
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz17ERL7f67rAK7dk7mJg1IJEItY4IGWk4no5Hi5mOGusQcMTeLEkO2nKUzcYZXI0x5/exec";
+import confetti from "canvas-confetti"; 
+import { supabase } from "@/lib/supabase"; // 👈 QUAN TRỌNG: Import Supabase
 
 interface RsvpModalProps {
   onClose: () => void;
@@ -26,11 +25,12 @@ export default function RsvpModal({
 
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  
+  // State để hứng lỗi nếu có
+  const [errorMsg, setErrorMsg] = useState("");
 
-  // Xác định xem người dùng trước đó chọn "Bận" hay không
   const isBusyPreviously = initialAttendance?.toLowerCase().includes("bận") || initialAttendance?.toLowerCase().includes("tiếc");
 
-  // State quản lý chế độ xem
   const [viewMode, setViewMode] = useState<'form' | 'busy-screen'>(
     (hasConfirmed && isBusyPreviously) ? 'busy-screen' : 'form'
   );
@@ -41,31 +41,42 @@ export default function RsvpModal({
     wish: initialWish || ""
   });
 
-  // Chặn scroll khi mở modal
   useEffect(() => {
     document.body.style.overflow = "hidden";
     return () => { document.body.style.overflow = "unset"; };
   }, []);
 
+  // --- HÀM GỬI DỮ LIỆU MỚI (Dùng Supabase) ---
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setErrorMsg(""); // Reset lỗi
 
     try {
-      await fetch(SCRIPT_URL, {
-        method: "POST",
-        mode: "no-cors",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...formData, id: guestId }),
-      });
+      console.log("Đang gửi RSVP cho ID:", guestId);
 
+      // 1. Gửi lệnh Update lên Supabase
+      const { error } = await supabase
+        .from('guests')
+        .update({
+          is_confirmed: true,
+          attendance: formData.attendance,
+          wish: formData.wish,
+          // name: formData.name // Không update tên để tránh bị sửa bậy
+        })
+        .eq('id', guestId); // Tìm đúng dòng có ID khách
+
+      if (error) throw error; // Nếu có lỗi thì ném xuống catch
+
+      // 2. Nếu thành công
+      console.log("✅ Đã lưu thành công!");
       setSuccess(true);
+      
+      // Lưu tạm vào LocalStorage để nhớ trạng thái
       localStorage.setItem(`rsvp_${guestId}`, "true");
 
-      // 👉 KIỂM TRA ĐIỀU KIỆN VÀ BẮN PHÁO
+      // 3. Hiệu ứng pháo hoa
       if (formData.attendance === "Có tham dự") {
-        console.log("Đang bắn pháo hoa..."); // Bật F12 xem có dòng này không
-
         const duration = 3000;
         const animationEnd = Date.now() + duration;
         const random = (min: number, max: number) => Math.random() * (max - min) + min;
@@ -75,34 +86,36 @@ export default function RsvpModal({
             if (timeLeft <= 0) return clearInterval(interval);
             const particleCount = 50 * (timeLeft / duration);
             
-            // 🧨 CẤU HÌNH QUAN TRỌNG: zIndex
-            const confettiConfig = {
+            confetti({
                 particleCount,
                 startVelocity: 30,
                 spread: 360,
                 ticks: 60,
-                zIndex: 10000000, // 👉 PHẢI CAO HƠN z-index CỦA MODAL
-                colors: ['#d4af37', '#ffffff', '#fadd7d']
-            };
-
-            confetti({
-                ...confettiConfig,
+                zIndex: 10000000,
+                colors: ['#d4af37', '#ffffff', '#fadd7d'],
                 origin: { x: random(0.1, 0.3), y: Math.random() - 0.2 },
             });
             confetti({
-                ...confettiConfig,
+                particleCount,
+                startVelocity: 30,
+                spread: 360,
+                ticks: 60,
+                zIndex: 10000000,
+                colors: ['#d4af37', '#ffffff', '#fadd7d'],
                 origin: { x: random(0.7, 0.9), y: Math.random() - 0.2 },
             });
         }, 250);
       }
 
+      // 4. Đóng modal và reload trang sau 2s
       setTimeout(() => {
         onClose();
-        window.location.reload();
-      }, 3000); // Tăng thời gian chờ lên 3s để ngắm pháo hoa
+        window.location.reload(); 
+      }, 2000);
 
-    } catch (error) {
-      alert("Lỗi kết nối! Vui lòng thử lại.");
+    } catch (error: any) {
+      console.error("❌ Lỗi khi lưu:", error);
+      setErrorMsg("Lỗi: " + (error.message || "Không thể lưu dữ liệu"));
     } finally {
       setLoading(false);
     }
@@ -110,17 +123,14 @@ export default function RsvpModal({
 
   return (
     <div className="fixed inset-0 z-[999999] flex items-center justify-center p-4">
-      {/* Backdrop mờ tối hơn chút cho nổi bật modal */}
       <div className="absolute inset-0 bg-black/90 backdrop-blur-sm animate-in fade-in duration-300" onClick={onClose} />
 
       <div className="relative w-full max-w-md bg-[#111] border border-[#d4af37]/30 rounded-2xl p-6 shadow-[0_0_40px_rgba(212,175,55,0.15)] animate-in zoom-in-95 duration-300 overflow-hidden">
         
-        {/* Header trang trí */}
         <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-transparent via-[#d4af37] to-transparent" />
-        <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors"><X size={24} /></button>
+        <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors z-50"><X size={24} /></button>
 
         {success ? (
-          // --- MÀN HÌNH THÀNH CÔNG ---
           <div className="text-center py-10 animate-in fade-in slide-in-from-bottom-4">
             <div className="w-20 h-20 bg-green-500/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-green-500/20">
                 <CheckCircle className="w-10 h-10 text-green-500" />
@@ -134,7 +144,6 @@ export default function RsvpModal({
           </div>
         ) : (
           <>
-            {/* --- MÀN HÌNH: ĐÃ TỪ CHỐI TRƯỚC ĐÓ --- */}
             {viewMode === 'busy-screen' ? (
               <div className="text-center py-6 space-y-6">
                 <div className="w-20 h-20 bg-gray-800/50 rounded-full flex items-center justify-center mx-auto border border-gray-700">
@@ -149,7 +158,6 @@ export default function RsvpModal({
                 </div>
                 
                 <div className="pt-2 border-t border-white/10">
-                  <p className="text-xs text-gray-500 mb-3">Nếu bạn đổi ý và có thể tham gia, hãy bấm nút dưới:</p>
                   <button 
                     onClick={() => {
                       setFormData(prev => ({ ...prev, attendance: "Có tham dự" }));
@@ -162,7 +170,6 @@ export default function RsvpModal({
                 </div>
               </div>
             ) : (
-              /* --- MÀN HÌNH: FORM NHẬP LIỆU --- */
               <div className="animate-in fade-in slide-in-from-right-4 duration-300">
                 
                 {hasConfirmed && (
@@ -178,9 +185,15 @@ export default function RsvpModal({
                 <h2 className="text-2xl font-bold text-center text-transparent bg-clip-text bg-gradient-to-r from-[#fadd7d] to-[#aa8e26] mb-8 uppercase tracking-widest">
                   {hasConfirmed ? "Cập Nhật RSVP" : "Xác Nhận RSVP"}
                 </h2>
+                
+                {/* Hiển thị lỗi nếu có */}
+                {errorMsg && (
+                  <div className="bg-red-500/10 border border-red-500/50 text-red-500 p-3 rounded mb-4 text-sm text-center">
+                    {errorMsg}
+                  </div>
+                )}
 
                 <form onSubmit={handleSubmit} className="space-y-5">
-                  {/* TÊN (READ ONLY) */}
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold text-[#d4af37] uppercase tracking-widest ml-1">Tên khách mời</label>
                     <input 
@@ -192,11 +205,9 @@ export default function RsvpModal({
                     />
                   </div>
 
-                  {/* CHỌN TRẠNG THÁI (CARD STYLE) */}
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold text-[#d4af37] uppercase tracking-widest ml-1">Bạn sẽ tham dự chứ?</label>
                     <div className="grid grid-cols-2 gap-3">
-                      {/* NÚT CÓ */}
                       <button 
                         type="button" 
                         onClick={() => setFormData({...formData, attendance: "Có tham dự"})} 
@@ -210,7 +221,6 @@ export default function RsvpModal({
                         <span className="text-xs font-bold uppercase">Chắc chắn rồi</span>
                       </button>
 
-                      {/* NÚT KHÔNG */}
                       <button 
                         type="button" 
                         onClick={() => setFormData({...formData, attendance: "Rất tiếc, mình bận"})} 
@@ -226,7 +236,6 @@ export default function RsvpModal({
                     </div>
                   </div>
 
-                  {/* LỜI CHÚC */}
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold text-[#d4af37] uppercase tracking-widest ml-1">Lời nhắn gửi</label>
                     <textarea 
@@ -237,7 +246,6 @@ export default function RsvpModal({
                     />
                   </div>
 
-                  {/* NÚT SUBMIT */}
                   <button 
                     type="submit" 
                     disabled={loading} 

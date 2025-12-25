@@ -1,46 +1,49 @@
-import MobileInvitation from "@/components/3d/InvitationCard"; 
-import { getGuestsFromSheet } from "@/lib/google-sheets";
+import MobileInvitation from "@/components/3d/InvitationCard";
+import { getGuestById } from "@/lib/supabase"; 
 import { Metadata } from "next";
 import { notFound } from "next/navigation";
 
-export const revalidate = 0; // 👈 Thêm dòng này: Bắt buộc Web tải mới mỗi giây
-export const dynamic = 'force-dynamic'; // 👈 Thêm dòng này cho chắc chắn
+// 1. Cấu hình để Next.js không cache dữ liệu (Luôn lấy mới nhất từ Supabase)
+export const revalidate = 0; 
+export const dynamic = 'force-dynamic';
 
-type Props = {
+interface GuestPageProps {
   params: Promise<{ guestId: string }>;
-};
+}
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
+// 2. Hàm tạo SEO Title (Hiện tên khách trên tab trình duyệt/Google)
+export async function generateMetadata({ params }: GuestPageProps): Promise<Metadata> {
   const { guestId } = await params;
-  
-  // Gọi Google Sheet lấy dữ liệu
-  const db = await getGuestsFromSheet();
-  const guest = db[guestId];
+  const guest = await getGuestById(guestId);
 
   if (!guest) return { title: "Thiệp mời Lễ Tốt Nghiệp 2025" };
 
   return {
     title: `Gửi ${guest.name} | Thiệp Mời`,
+    openGraph: {
+      title: `Gửi ${guest.name} | Thiệp Mời`,
+      description: "Trân trọng kính mời bạn đến tham dự lễ tốt nghiệp của mình.",
+    }
   };
 }
 
-export default async function GuestPage({ params }: Props) {
+// 3. Component chính
+export default async function GuestPage({ params }: GuestPageProps) {
   const { guestId } = await params;
-  const guests = await getGuestsFromSheet();
-  const guest = guests[guestId];
-  console.log("Khách:", guest.name, "| Trạng thái:", guest.isConfirmed);
+  
+  // Gọi hàm lấy dữ liệu từ Supabase
+  const guest = await getGuestById(guestId);
 
-  if (!guest) {
-    return notFound(); 
-  }
+  // Nếu không thấy khách trong DB -> Trả về trang 404
+  if (!guest) return notFound();
 
- return (
-<MobileInvitation 
+  return (
+    <MobileInvitation 
       guestName={guest.name} 
-      guestId={guest.id}           // ✅ Sửa guestID -> guestId
-      isConfirmed={guest.isConfirmed}
-      initialAttendance={guest.attendance} // 👈 Truyền dữ liệu cũ (nếu có)
-      initialWish={guest.wish} // 👈 Truyền dữ liệu cũ (nếu có)
+      guestId={guest.id}
+      isConfirmed={guest.isConfirmed} // Lưu ý: Đảm bảo hàm getGuestById trong lib/supabase.ts đã map 'is_confirmed' thành 'isConfirmed'
+      initialAttendance={guest.attendance}
+      initialWish={guest.wish}
     />
   );
 }
