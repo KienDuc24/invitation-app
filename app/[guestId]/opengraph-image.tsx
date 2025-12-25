@@ -1,28 +1,35 @@
 import { ImageResponse } from 'next/og';
 import { getGuestsFromSheet } from '@/lib/google-sheets';
 
-// 1. QUAN TRỌNG: Đổi runtime sang 'nodejs' để gọi được Google Sheets API
+// 1. Runtime nodejs để fetch được Google Sheet ổn định
 export const runtime = 'nodejs'; 
 
 export const size = { width: 1200, height: 630 };
 export const contentType = 'image/png';
 
-export default async function Image({ params }: { params: { guestId: string } }) {
-  // Lấy guestId từ URL
-  const { guestId } = params;
+// 2. Định nghĩa lại type cho params là Promise (Chuẩn Next.js 15)
+type Props = {
+  params: Promise<{ guestId: string }>;
+};
 
-  // 2. Load dữ liệu từ Google Sheet
+export default async function Image({ params }: Props) {
+  // 3. QUAN TRỌNG: Phải await params trước khi lấy guestId
+  const { guestId } = await params;
+
+  // Load dữ liệu
   const guests = await getGuestsFromSheet();
   
-  // 3. Xử lý ID: Decode để tránh lỗi ký tự lạ và trim khoảng trắng
+  // 4. Xử lý ID: Decode, trim và lowercase để khớp chính xác nhất
   const cleanId = decodeURIComponent(guestId || '').trim();
+  
+  // Tìm khách (Lưu ý: guests[cleanId] phải khớp chính xác ID trong sheet)
   const guest = guests[cleanId];
 
-  // Debug log (sẽ hiện trong terminal server khi request ảnh)
-  console.log(`OG Image generation for ID: ${cleanId}, Found: ${guest?.name}`);
+  // Debug log: Xem logs trên Vercel để biết chính xác code đang nhận được gì
+  console.log(`[OG-DEBUG] ID từ URL: "${cleanId}" | Tìm thấy: ${guest ? guest.name : "KHÔNG THẤY"}`);
 
-  // 4. Fallback
-  const guestName = guest ? guest.name : "Bạn Mình";
+  // Fallback
+  const guestName = guest ? guest.name : "Bạn tôi";
   const statusText = guest?.isConfirmed ? "Đã xác nhận tham gia" : "Trân trọng kính mời";
 
   return new ImageResponse(
@@ -40,7 +47,6 @@ export default async function Image({ params }: { params: { guestId: string } })
           position: 'relative',
         }}
       >
-        {/* Viền trang trí */}
         <div style={{
           position: 'absolute',
           top: 40, left: 40, right: 40, bottom: 40,
@@ -49,9 +55,7 @@ export default async function Image({ params }: { params: { guestId: string } })
           borderRadius: 20,
         }} />
 
-        {/* Nội dung chính */}
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20 }}>
-          
           <div style={{ 
             color: '#d4af37', 
             fontSize: 30, 
@@ -87,20 +91,16 @@ export default async function Image({ params }: { params: { guestId: string } })
           </div>
         </div>
 
-        {/* Footer */}
         <div style={{
           position: 'absolute',
           bottom: 60,
           color: '#666',
           fontSize: 20,
         }}>
-          {/* Sửa dòng dưới này thành domain của bạn */}
           invitation-app-brown.vercel.app
         </div>
       </div>
     ),
-    {
-      ...size,
-    }
+    { ...size }
   );
 }
