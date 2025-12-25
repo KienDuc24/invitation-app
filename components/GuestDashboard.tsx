@@ -1,17 +1,16 @@
 "use client";
 
-import { useState, useRef } from "react";
-import { supabase } from "@/lib/supabase";
-import { ImagePlus, Send, MessageCircle, MapPin, Ticket, Loader2, HeartHandshake } from "lucide-react";
 import MobileInvitation from "@/components/3d/InvitationCard";
-import ChatGroup from "@/components/ChatGroup"; 
+import ChatGroup from "@/components/ChatGroup";
+import { supabase } from "@/lib/supabase";
+import { HeartHandshake, ImagePlus, Loader2, MapPin, MessageCircle, Send, Ticket } from "lucide-react";
+import { useRef, useState } from "react";
 
 interface DashboardProps {
   guest: any;
 }
 
 export default function GuestDashboard({ guest }: DashboardProps) {
-  // ✅ ĐÃ FIX: Khai báo đủ 3 trạng thái tab
   const [activeTab, setActiveTab] = useState<'wish' | 'chat' | 'card'>('wish');
   
   // --- STATE CHO LƯU BÚT (CONFESSION) ---
@@ -82,7 +81,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
            initialAttendance={guest.attendance} 
            initialWish={guest.wish}
            // 👇 TRUYỀN HÀM CHUYỂN TAB VÀO ĐÂY ĐỂ MENU TRONG THIỆP HOẠT ĐỘNG
-           onTabChange={(tab) => setActiveTab(tab)}
+           onTabChange={(tab) => setActiveTab(tab as 'wish' | 'chat' | 'card')}
         />
       </div>
     );
@@ -230,7 +229,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                 onClick={() => setActiveTab('chat')} 
             />
             <NavButton 
-                active={activeTab === 'card'} 
+                active={activeTab === ('card' as any)} 
                 icon={<ImagePlus size={20} />} 
                 label="Xem thiệp" 
                 onClick={() => setActiveTab('card')} 
