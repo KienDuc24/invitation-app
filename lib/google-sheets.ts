@@ -60,8 +60,7 @@ export async function getGuestsFromSheet(): Promise<Record<string, GuestInfo>> {
               if (cleanId === 'cas-2711') {
                 console.log("-------------------------------------------------");
                 console.log(`🔍 KIỂM TRA KHÁCH: ${row.name}`);
-                console.log(`- Dữ liệu thô từ sheet: "${row.isconfirmed || row.is_confirmed}"`);
-                console.log(`- Máy tính hiểu là: ${isConfirmed ? "ĐÃ XÁC NHẬN (True)" : "CHƯA (False)"}`);
+                console.log(`- Dữ liệu từ sheet: "${row.isconfirmed || row.is_confirmed}"`);
                 console.log("-------------------------------------------------");
               }
 

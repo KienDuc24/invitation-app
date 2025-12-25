@@ -1,48 +1,51 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X, Send, CheckCircle, Loader2, RefreshCw, Frown } from "lucide-react"; // Thêm icon Frown
+import { X, Send, CheckCircle, Loader2, RefreshCw, Frown, Heart } from "lucide-react";
+import confetti from "canvas-confetti"; // Import thư viện pháo giấy
 
-const SCRIPT_URL =" https://script.google.com/macros/s/AKfycbx3FMwJ0ERwCUcDq8C6HMlXSfljxD4xBP71tYOPvl_nUBfditseGuYXaQAXuWMStIOA/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz17ERL7f67rAK7dk7mJg1IJEItY4IGWk4no5Hi5mOGusQcMTeLEkO2nKUzcYZXI0x5/exec";
 
 interface RsvpModalProps {
   onClose: () => void;
   guestId: string;
   defaultName: string;
   hasConfirmed: boolean;
-  // 👇 Nhận thêm dữ liệu cũ để fill vào form
-  initialAttendance?: string; 
+  initialAttendance?: string;
   initialWish?: string;
 }
 
-export default function RsvpModal({ 
-  onClose, 
-  defaultName, 
-  guestId, 
-  hasConfirmed, 
-  initialAttendance, 
-  initialWish 
+export default function RsvpModal({
+  onClose,
+  defaultName,
+  guestId,
+  hasConfirmed,
+  initialAttendance,
+  initialWish
 }: RsvpModalProps) {
-  
+
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
-  
-  // Xác định xem người dùng trước đó chọn "Bận" hay không
-  // Lưu ý: String so sánh phải khớp với value bạn gửi lên sheet ("Rất tiếc, mình bận")
-  const isBusyPreviously = initialAttendance?.includes("bận") || initialAttendance?.includes("tiếc");
 
-  // State quản lý chế độ xem: 'form' (điền đơn) hoặc 'busy-screen' (thông báo bận)
-  // Nếu đã confirm và là bận -> hiện màn hình busy. Ngược lại hiện form.
+  // Xác định xem người dùng trước đó chọn "Bận" hay không
+  const isBusyPreviously = initialAttendance?.toLowerCase().includes("bận") || initialAttendance?.toLowerCase().includes("tiếc");
+
+  // State quản lý chế độ xem
   const [viewMode, setViewMode] = useState<'form' | 'busy-screen'>(
     (hasConfirmed && isBusyPreviously) ? 'busy-screen' : 'form'
   );
 
   const [formData, setFormData] = useState({
     name: defaultName || "",
-    // Nếu có dữ liệu cũ thì lấy, không thì mặc định "Có tham dự"
     attendance: initialAttendance || "Có tham dự",
     wish: initialWish || ""
   });
+
+  // Chặn scroll khi mở modal
+  useEffect(() => {
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = "unset"; };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,117 +54,200 @@ export default function RsvpModal({
     try {
       await fetch(SCRIPT_URL, {
         method: "POST",
-        mode: "no-cors", 
+        mode: "no-cors",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...formData, id: guestId }), 
+        body: JSON.stringify({ ...formData, id: guestId }),
       });
 
       setSuccess(true);
       localStorage.setItem(`rsvp_${guestId}`, "true");
-      
+
+      // 👉 KIỂM TRA ĐIỀU KIỆN VÀ BẮN PHÁO
+      if (formData.attendance === "Có tham dự") {
+        console.log("Đang bắn pháo hoa..."); // Bật F12 xem có dòng này không
+
+        const duration = 3000;
+        const animationEnd = Date.now() + duration;
+        const random = (min: number, max: number) => Math.random() * (max - min) + min;
+
+        const interval: any = setInterval(function() {
+            const timeLeft = animationEnd - Date.now();
+            if (timeLeft <= 0) return clearInterval(interval);
+            const particleCount = 50 * (timeLeft / duration);
+            
+            // 🧨 CẤU HÌNH QUAN TRỌNG: zIndex
+            const confettiConfig = {
+                particleCount,
+                startVelocity: 30,
+                spread: 360,
+                ticks: 60,
+                zIndex: 10000000, // 👉 PHẢI CAO HƠN z-index CỦA MODAL
+                colors: ['#d4af37', '#ffffff', '#fadd7d']
+            };
+
+            confetti({
+                ...confettiConfig,
+                origin: { x: random(0.1, 0.3), y: Math.random() - 0.2 },
+            });
+            confetti({
+                ...confettiConfig,
+                origin: { x: random(0.7, 0.9), y: Math.random() - 0.2 },
+            });
+        }, 250);
+      }
+
       setTimeout(() => {
         onClose();
-        window.location.reload(); 
-      }, 2000);
+        window.location.reload();
+      }, 3000); // Tăng thời gian chờ lên 3s để ngắm pháo hoa
+
     } catch (error) {
-      alert("Lỗi kết nối!");
+      alert("Lỗi kết nối! Vui lòng thử lại.");
     } finally {
       setLoading(false);
     }
   };
 
-  // --- RENDER GIAO DIỆN ---
-
   return (
-    <div className="fixed inset-0 z-[999999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-300">
-      <div className="relative w-full max-w-md bg-[#111] border border-[#d4af37]/30 rounded-2xl p-6 shadow-[0_0_30px_rgba(212,175,55,0.1)]">
+    <div className="fixed inset-0 z-[999999] flex items-center justify-center p-4">
+      {/* Backdrop mờ tối hơn chút cho nổi bật modal */}
+      <div className="absolute inset-0 bg-black/90 backdrop-blur-sm animate-in fade-in duration-300" onClick={onClose} />
+
+      <div className="relative w-full max-w-md bg-[#111] border border-[#d4af37]/30 rounded-2xl p-6 shadow-[0_0_40px_rgba(212,175,55,0.15)] animate-in zoom-in-95 duration-300 overflow-hidden">
         
-        <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-white"><X size={24} /></button>
+        {/* Header trang trí */}
+        <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-transparent via-[#d4af37] to-transparent" />
+        <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors"><X size={24} /></button>
 
         {success ? (
-          <div className="text-center py-8">
-            <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
-            <h3 className="text-xl font-bold text-[#d4af37]">Cập nhật thành công!</h3>
+          // --- MÀN HÌNH THÀNH CÔNG ---
+          <div className="text-center py-10 animate-in fade-in slide-in-from-bottom-4">
+            <div className="w-20 h-20 bg-green-500/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-green-500/20">
+                <CheckCircle className="w-10 h-10 text-green-500" />
+            </div>
+            <h3 className="text-2xl font-bold text-[#d4af37] mb-2">Cảm ơn {formData.name}!</h3>
+            <p className="text-gray-400 text-sm">
+                {formData.attendance === "Có tham dự" 
+                    ? "Hẹn gặp lại bạn tại buổi lễ nhé! ❤️" 
+                    : "Đã ghi nhận phản hồi của bạn."}
+            </p>
           </div>
         ) : (
           <>
-            {/* TRƯỜNG HỢP 1: ĐÃ XÁC NHẬN LÀ BẬN -> HIỆN MÀN HÌNH KHÁC */}
+            {/* --- MÀN HÌNH: ĐÃ TỪ CHỐI TRƯỚC ĐÓ --- */}
             {viewMode === 'busy-screen' ? (
-              <div className="text-center py-6 space-y-4">
-                <Frown className="w-16 h-16 text-gray-400 mx-auto" />
-                <h2 className="text-xl font-bold text-[#fadd7d]">Rất tiếc vì bạn không thể tham gia!</h2>
-                <p className="text-sm text-gray-400">
-                  Chúng mình đã ghi nhận phản hồi của bạn: <br/>
-                  <span className="text-white font-medium">"{initialAttendance}"</span>
-                </p>
-                <div className="pt-4">
-                  <p className="text-xs text-gray-500 mb-2">Nếu bạn đổi ý và có thể tham gia, hãy bấm nút dưới đây:</p>
+              <div className="text-center py-6 space-y-6">
+                <div className="w-20 h-20 bg-gray-800/50 rounded-full flex items-center justify-center mx-auto border border-gray-700">
+                    <Frown className="w-10 h-10 text-gray-400" />
+                </div>
+                <div>
+                    <h2 className="text-xl font-bold text-[#fadd7d] mb-2">Rất tiếc vì bạn vắng mặt!</h2>
+                    <p className="text-sm text-gray-400 leading-relaxed">
+                    Chúng mình đã ghi nhận phản hồi:<br/>
+                    <span className="text-white font-medium italic">"{initialAttendance}"</span>
+                    </p>
+                </div>
+                
+                <div className="pt-2 border-t border-white/10">
+                  <p className="text-xs text-gray-500 mb-3">Nếu bạn đổi ý và có thể tham gia, hãy bấm nút dưới:</p>
                   <button 
                     onClick={() => {
-                      // Chuyển sang chế độ form và set lại trạng thái mặc định là có đi
                       setFormData(prev => ({ ...prev, attendance: "Có tham dự" }));
                       setViewMode('form');
                     }}
-                    className="bg-[#d4af37]/20 border border-[#d4af37] text-[#d4af37] px-4 py-2 rounded-lg text-sm hover:bg-[#d4af37]/30 transition-all"
+                    className="w-full py-3 bg-[#d4af37]/10 border border-[#d4af37]/50 text-[#d4af37] rounded-xl text-sm font-bold hover:bg-[#d4af37] hover:text-black transition-all"
                   >
-                    Mình muốn tham gia!
+                    🎉 Mình sẽ tham gia!
                   </button>
                 </div>
               </div>
             ) : (
-              /* TRƯỜNG HỢP 2: FORM ĐIỀN (MỚI HOẶC UPDATE) */
-              <>
+              /* --- MÀN HÌNH: FORM NHẬP LIỆU --- */
+              <div className="animate-in fade-in slide-in-from-right-4 duration-300">
+                
                 {hasConfirmed && (
-                   <div className="mb-6 p-3 bg-[#d4af37]/10 border border-[#d4af37]/50 rounded-lg flex items-start gap-3">
-                      <CheckCircle className="text-[#d4af37] shrink-0 mt-1" size={20} />
+                   <div className="mb-6 p-3 bg-[#d4af37]/10 border border-[#d4af37]/30 rounded-lg flex items-center gap-3">
+                      <div className="bg-[#d4af37]/20 p-1.5 rounded-full"><CheckCircle className="text-[#d4af37]" size={16} /></div>
                       <div>
-                        <p className="text-sm text-[#fadd7d] font-bold">Bạn đã xác nhận trước đó.</p>
-                        <p className="text-xs text-gray-400">Thông tin cũ đã được điền sẵn bên dưới.</p>
+                        <p className="text-xs text-[#fadd7d] font-bold uppercase tracking-wider">Đã xác nhận</p>
+                        <p className="text-[10px] text-gray-400">Bạn đang cập nhật lại thông tin cũ.</p>
                       </div>
                    </div>
                 )}
 
-                <h2 className="text-2xl font-bold text-center text-transparent bg-clip-text bg-gradient-to-r from-[#fadd7d] to-[#aa8e26] mb-6 uppercase tracking-wider">
-                  {hasConfirmed ? "Cập Nhật Thông Tin" : "Xác Nhận Tham Dự"}
+                <h2 className="text-2xl font-bold text-center text-transparent bg-clip-text bg-gradient-to-r from-[#fadd7d] to-[#aa8e26] mb-8 uppercase tracking-widest">
+                  {hasConfirmed ? "Cập Nhật RSVP" : "Xác Nhận RSVP"}
                 </h2>
 
-                <form onSubmit={handleSubmit} className="space-y-4">
-                  <div>
-                    <label className="text-xs text-[#d4af37] uppercase mb-1 block">Tên hiển thị</label>
-                    <input type="text" required value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white focus:border-[#d4af37] focus:outline-none" />
+                <form onSubmit={handleSubmit} className="space-y-5">
+                  {/* TÊN (READ ONLY) */}
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-[#d4af37] uppercase tracking-widest ml-1">Tên khách mời</label>
+                    <input 
+                        type="text" 
+                        required 
+                        value={formData.name} 
+                        readOnly 
+                        className="w-full bg-[#1a1a1a] border border-[#333] rounded-xl px-4 py-3 text-gray-400 font-medium cursor-not-allowed focus:outline-none select-none" 
+                    />
                   </div>
 
-                  <div>
-                    <label className="text-xs text-[#d4af37] uppercase mb-2 block">Trạng thái</label>
+                  {/* CHỌN TRẠNG THÁI (CARD STYLE) */}
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-[#d4af37] uppercase tracking-widest ml-1">Bạn sẽ tham dự chứ?</label>
                     <div className="grid grid-cols-2 gap-3">
-                      {["Có tham dự", "Rất tiếc, mình bận"].map((option) => (
-                        <button 
-                          key={option} 
-                          type="button" 
-                          onClick={() => setFormData({...formData, attendance: option})} 
-                          className={`p-3 rounded-lg text-sm font-medium transition-all border ${
-                            formData.attendance === option 
-                            ? "bg-[#d4af37]/20 border-[#d4af37] text-[#d4af37]" 
-                            : "bg-white/5 border-white/10 text-gray-400 hover:bg-white/10"
-                          }`}
-                        >
-                          {option}
-                        </button>
-                      ))}
+                      {/* NÚT CÓ */}
+                      <button 
+                        type="button" 
+                        onClick={() => setFormData({...formData, attendance: "Có tham dự"})} 
+                        className={`p-4 rounded-xl border flex flex-col items-center gap-2 transition-all duration-200 ${
+                          formData.attendance === "Có tham dự" 
+                            ? "bg-[#d4af37] border-[#d4af37] text-black shadow-lg shadow-[#d4af37]/20 scale-[1.02]" 
+                            : "bg-[#1a1a1a] border-[#333] text-gray-500 hover:border-gray-500 hover:bg-[#222]"
+                        }`}
+                      >
+                        <Heart className={`w-6 h-6 ${formData.attendance === "Có tham dự" ? "fill-black" : ""}`} />
+                        <span className="text-xs font-bold uppercase">Chắc chắn rồi</span>
+                      </button>
+
+                      {/* NÚT KHÔNG */}
+                      <button 
+                        type="button" 
+                        onClick={() => setFormData({...formData, attendance: "Rất tiếc, mình bận"})} 
+                        className={`p-4 rounded-xl border flex flex-col items-center gap-2 transition-all duration-200 ${
+                          formData.attendance === "Rất tiếc, mình bận" 
+                            ? "bg-gray-700 border-gray-600 text-white shadow-lg" 
+                            : "bg-[#1a1a1a] border-[#333] text-gray-500 hover:border-gray-500 hover:bg-[#222]"
+                        }`}
+                      >
+                        <X className="w-6 h-6" />
+                        <span className="text-xs font-bold uppercase">Tiếc quá, mình bận</span>
+                      </button>
                     </div>
                   </div>
 
-                  <div>
-                    <label className="text-xs text-[#d4af37] uppercase mb-1 block">Lời nhắn gửi</label>
-                    <textarea value={formData.wish} onChange={(e) => setFormData({...formData, wish: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white h-24 resize-none focus:border-[#d4af37] focus:outline-none" placeholder="Viết lời chúc..." />
+                  {/* LỜI CHÚC */}
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-[#d4af37] uppercase tracking-widest ml-1">Lời nhắn gửi</label>
+                    <textarea 
+                        value={formData.wish} 
+                        onChange={(e) => setFormData({...formData, wish: e.target.value})} 
+                        className="w-full bg-[#0a0a0a] border border-[#333] rounded-xl p-4 text-white h-24 resize-none focus:border-[#d4af37] focus:outline-none placeholder:text-gray-700 text-sm transition-colors" 
+                        placeholder="Gửi vài lời chúc đến mình nhé..." 
+                    />
                   </div>
 
-                  <button type="submit" disabled={loading} className="w-full bg-gradient-to-r from-[#d4af37] to-[#aa8e26] text-black font-bold py-3 rounded-lg hover:opacity-90 flex items-center justify-center gap-2 mt-2">
-                    {loading ? <Loader2 className="animate-spin" /> : (hasConfirmed ? <RefreshCw size={18} /> : <Send size={18} />)}
+                  {/* NÚT SUBMIT */}
+                  <button 
+                    type="submit" 
+                    disabled={loading} 
+                    className="w-full bg-gradient-to-r from-[#d4af37] to-[#b89628] text-black font-bold text-lg py-3.5 rounded-xl hover:shadow-lg hover:shadow-[#d4af37]/20 hover:scale-[1.01] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:pointer-events-none"
+                  >
+                    {loading ? <Loader2 className="animate-spin" /> : (hasConfirmed ? <RefreshCw size={20} /> : <Send size={20} />)}
                     {hasConfirmed ? "CẬP NHẬT LẠI" : "GỬI XÁC NHẬN"}
                   </button>
                 </form>
-              </>
+              </div>
             )}
           </>
         )}
