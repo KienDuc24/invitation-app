@@ -6,7 +6,8 @@ import { Canvas, useThree, useFrame } from "@react-three/fiber";
 import { Text, Environment, Float, ContactShadows, RoundedBox, Sparkles, OrbitControls, Stars, useGLTF, useVideoTexture } from "@react-three/drei";
 import * as THREE from "three";
 import { EffectComposer, Bloom, Vignette, Noise } from "@react-three/postprocessing";
-import { X, Sparkles as SparklesIcon, Smartphone, RotateCcw, Volume2, VolumeX, Send, RefreshCw, Heart, Loader2, CheckCircle, Frown } from "lucide-react";
+// 👇 [THÊM] Import các icon cho Menu
+import { X, Sparkles as SparklesIcon, Smartphone, RotateCcw, Volume2, VolumeX, Send, RefreshCw, Heart, Loader2, CheckCircle, Frown, Ticket, MessageCircle, ImagePlus } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import confetti from "canvas-confetti";
 
@@ -16,7 +17,7 @@ const MUSIC_URL = "/music/bg-music.mp3";
 const FONT_URL = "https://fonts.gstatic.com/s/roboto/v30/KFOmCnqEu92Fr1Mu4mxM.woff";
 const CAP_MODEL_URL = "/models/cap.glb";
 
-// --- CÁC COMPONENT 3D (Giữ nguyên) ---
+// --- CÁC COMPONENT 3D (Giữ nguyên - Rút gọn để đỡ dài dòng) ---
 function MatteGoldMaterial() { return <meshStandardMaterial color="#cfa436" roughness={0.5} metalness={0.7} envMapIntensity={1} />; }
 function SatinGoldMaterial() { return <meshStandardMaterial color="#eacda3" roughness={0.3} metalness={0.9} envMapIntensity={1.5} />; }
 function DeepVelvetMaterial() { return <meshStandardMaterial color="#020202" roughness={0.95} metalness={0.05} envMapIntensity={0.2} />; }
@@ -54,15 +55,14 @@ function GraduationCap({ visible }: { visible: boolean }) {
         capRef.current.rotation.y = Math.sin(t) * 0.1;
     }
   });
-  return <group ref={capRef} position={[0, 7.0, 0]} rotation={[0.1, 0, 0]} scale={0.75}><primitive object={clone} /></group>;
+  return <group ref={capRef} position={[0, 7.0, 0]} rotation={[0.1, 0, 0]} scale={0.65}><primitive object={clone} /></group>;
 }
 useGLTF.preload(CAP_MODEL_URL);
 
-// --- 3D CARD TEXT (Sửa lại vị trí tên Bùi Đức Kiên) ---
 function HeroCard({ guestName, startIntro }: { guestName: string, startIntro: boolean }) {
     const group = useRef<THREE.Group>(null);
     const { viewport } = useThree();
-    const targetScale = Math.min(viewport.width / 7, viewport.height / 4.5) * 0.65;
+    const targetScale = Math.min(viewport.width / 7, viewport.height / 4.5) * 0.7;
     const [cardStabilized, setCardStabilized] = useState(false);
     const initialized = useRef(false);
 
@@ -150,9 +150,18 @@ const BackgroundMusic = ({ play }: { play: boolean }) => {
 // --- COMPONENT CHÍNH ---
 interface InvitationProps {
     guestName?: string; guestId?: string; isConfirmed?: boolean; initialAttendance?: string; initialWish?: string;
+    // 👇 [THÊM] Prop để nhận hàm chuyển Tab
+    onTabChange?: (tab: 'wish' | 'chat' | 'card') => void;
 }
 
-export default function MobileInvitation({ guestName = "", guestId = "", isConfirmed = false, initialAttendance = "", initialWish = "" }: InvitationProps) {
+export default function MobileInvitation({ 
+    guestName = "", 
+    guestId = "", 
+    isConfirmed = false, 
+    initialAttendance = "", 
+    initialWish = "",
+    onTabChange // 👇 Nhận hàm này từ Dashboard
+}: InvitationProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isPortrait, setIsPortrait] = useState(false);
   const [startIntro, setStartIntro] = useState(false);
@@ -169,6 +178,8 @@ export default function MobileInvitation({ guestName = "", guestId = "", isConfi
           setRsvpState('success');
           setAttendance(initialAttendance || "Có tham dự");
           setWish(initialWish || "");
+          // Nếu đã confirm thì tự động mở thiệp luôn (không cần bấm nút Mở Thiệp)
+          setIsOpen(true);
       } else {
           setRsvpState('idle');
           setAttendance("");
@@ -214,54 +225,37 @@ export default function MobileInvitation({ guestName = "", guestId = "", isConfi
         
         <BackgroundMusic play={isOpen} />
 
-        {/* --- LANDING PAGE --- */}
+        {/* --- LANDING PAGE (CHỈ HIỆN KHI CHƯA MỞ THIỆP) --- */}
         <div className={`absolute inset-0 z-20 flex flex-col items-center justify-center transition-all duration-1000 ${isOpen ? 'opacity-0 pointer-events-none scale-150' : 'opacity-100 scale-100'}`}>
              <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_#1a1a1a_0%,_#000_100%)]" />
              
              <div className="relative z-10 w-full max-w-sm mx-6 flex flex-col items-center gap-6">
                 
-                {/* === CARD CHÍNH (Vẽ lại khung bằng CSS) === */}
+                {/* === CARD CHÍNH === */}
                 <div className="relative w-full py-16 px-6 flex flex-col items-center justify-center">
                     
-                    {/* KHUNG VIỀN MẢNH (Vẽ bằng DIV, không dùng ảnh nữa) */}
+                    {/* KHUNG VIỀN MẢNH */}
                     <div className="absolute inset-0 z-0 border border-[#d4af37]/40 rounded-sm">
-                        {/* 4 Góc vuông trang trí */}
                         <div className="absolute -top-[1px] -left-[1px] w-4 h-4 border-t-2 border-l-2 border-[#d4af37]" />
                         <div className="absolute -top-[1px] -right-[1px] w-4 h-4 border-t-2 border-r-2 border-[#d4af37]" />
                         <div className="absolute -bottom-[1px] -left-[1px] w-4 h-4 border-b-2 border-l-2 border-[#d4af37]" />
                         <div className="absolute -bottom-[1px] -right-[1px] w-4 h-4 border-b-2 border-r-2 border-[#d4af37]" />
                     </div>
 
-                    {/* NỘI DUNG */}
                     <div className="relative z-10 flex flex-col items-center text-center space-y-8">
-                        
-                        {/* 1. Lời mời */}
                         <div className="space-y-4">
                             <p className="text-[#d4af37] text-[10px] tracking-[0.3em] uppercase opacity-80 font-medium">Trân trọng kính mời</p>
                             <h1 className="text-3xl md:text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-b from-[#fadd7d] to-[#aa8e26] drop-shadow-md uppercase tracking-wide">
                                 {guestName}
                             </h1>
                         </div>
-
-                        {/* 2. Đường kẻ ngăn cách */}
                         <div className="w-12 h-[1px] bg-[#d4af37]/40" />
-
-                        {/* 3. Sự kiện & Tên chủ tiệc */}
                         <div className="space-y-1">
                              <p className="text-gray-400 text-[9px] tracking-[0.2em] uppercase">Tới tham dự sự kiện</p>
-                             <h2 className="text-xl font-bold text-white uppercase tracking-widest leading-tight mt-1">
-                                Lễ Tốt Nghiệp
-                             </h2>
-                             {/* Chữ "Của Bùi Đức Kiên" chuyển xuống đây */}
-                             <p className="text-[#d4af37] text-sm font-medium italic py-1">
-                                Của Bùi Đức Kiên
-                             </p>
-                             <p className="text-3xl font-black text-[#d4af37] drop-shadow-[0_0_15px_rgba(212,175,55,0.4)] pt-2">
-                                2025
-                             </p>
+                             <h2 className="text-xl font-bold text-white uppercase tracking-widest leading-tight mt-1">Lễ Tốt Nghiệp</h2>
+                             <p className="text-[#d4af37] text-sm font-medium italic py-1">Của Bùi Đức Kiên</p>
+                             <p className="text-3xl font-black text-[#d4af37] drop-shadow-[0_0_15px_rgba(212,175,55,0.4)] pt-2">2025</p>
                         </div>
-
-                        {/* 4. Nút bấm */}
                         <div className="pt-2">
                             <button
                                 onClick={() => setIsOpen(true)}
@@ -275,7 +269,7 @@ export default function MobileInvitation({ guestName = "", guestId = "", isConfi
                     </div>
                 </div>
                 
-                {/* KHUNG RSVP (Giữ nguyên) */}
+                {/* KHUNG RSVP */}
                 <div className="w-full bg-[#111]/50 backdrop-blur-sm border border-[#333]/50 rounded-xl p-4 animate-in slide-in-from-bottom-6 duration-700">
                     {rsvpState === 'idle' && (
                         <div>
@@ -292,7 +286,6 @@ export default function MobileInvitation({ guestName = "", guestId = "", isConfi
                             </div>
                         </div>
                     )}
-
                     {rsvpState === 'input' && (
                         <div className="space-y-2">
                             <div className="flex justify-between items-center">
@@ -319,7 +312,6 @@ export default function MobileInvitation({ guestName = "", guestId = "", isConfi
                             </div>
                         </div>
                     )}
-
                     {rsvpState === 'success' && (
                         <div className="flex items-center justify-between px-1">
                             <div className="flex items-center gap-2 text-green-500 font-bold uppercase text-[10px] tracking-wider">
@@ -340,7 +332,10 @@ export default function MobileInvitation({ guestName = "", guestId = "", isConfi
             <div className="absolute inset-0 z-30 animate-in fade-in duration-1000">
                 {isPortrait ? (<RotatePrompt />) : (
                     <>
-                        <button onClick={() => setIsOpen(false)} className="absolute top-6 right-6 z-50 p-3 rounded-full bg-white/10 text-white hover:bg-white/20 transition-all border border-white/5 backdrop-blur-md"><X size={28} /></button>
+                        {/* ẨN NÚT ĐÓNG X, thay bằng MENU DƯỚI nếu onTabChange có tồn tại */}
+                        {!onTabChange && (
+                           <button onClick={() => setIsOpen(false)} className="absolute top-6 right-6 z-50 p-3 rounded-full bg-white/10 text-white hover:bg-white/20 transition-all border border-white/5 backdrop-blur-md"><X size={28} /></button>
+                        )}
 
                         <Canvas shadows camera={{ position: [0, 0, 15], fov: 30 }} gl={{ antialias: true, toneMapping: THREE.ReinhardToneMapping, toneMappingExposure: 1.0 }} dpr={[1, 2]}>
                            <color attach="background" args={['#050505']} />
@@ -350,6 +345,17 @@ export default function MobileInvitation({ guestName = "", guestId = "", isConfi
                            <ContactShadows position={[0, -3.5, 0]} opacity={0.6} scale={20} blur={3} color="#000" />
                            <EffectComposer enableNormalPass={false}><Bloom luminanceThreshold={1.2} mipmapBlur intensity={0.4} radius={0.6} /><Noise opacity={0.015} /><Vignette offset={0.3} darkness={0.6} /></EffectComposer>
                         </Canvas>
+
+                        {/* 👇 [THÊM MỚI] HIỂN THỊ MENU NAV NẾU ĐƯỢC TRUYỀN VÀO */}
+                        {onTabChange && (
+                            <div className="fixed bottom-6 left-6 right-6 z-[999999]">
+                                <div className="bg-[#111]/90 backdrop-blur-xl border border-[#333] rounded-2xl p-2 flex justify-between shadow-[0_10px_40px_rgba(0,0,0,0.5)] max-w-md mx-auto">
+                                    <NavButton icon={<Ticket size={20} />} label="Lưu bút" onClick={() => onTabChange('wish')} active={false} />
+                                    <NavButton icon={<MessageCircle size={20} />} label="Trò chuyện" onClick={() => onTabChange('chat')} active={false} />
+                                    <NavButton icon={<ImagePlus size={20} />} label="Xem thiệp" onClick={() => {}} active={true} />
+                                </div>
+                            </div>
+                        )}
                     </>
                 )}
             </div>
@@ -357,4 +363,14 @@ export default function MobileInvitation({ guestName = "", guestId = "", isConfi
       </div>
     </PortalOverlay>
   );
+}
+
+// Button Nav nội bộ cho InvitationCard
+function NavButton({ active, icon, label, onClick }: any) {
+  return (
+    <button onClick={onClick} className={`flex-1 flex flex-col items-center justify-center gap-1 py-3 rounded-xl transition-all ${active ? 'bg-[#d4af37] text-black' : 'text-gray-500 hover:text-white'}`}>
+      {icon}
+      <span className="text-[9px] font-bold uppercase tracking-wider">{label}</span>
+    </button>
+  )
 }

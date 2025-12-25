@@ -1,9 +1,10 @@
 import MobileInvitation from "@/components/3d/InvitationCard";
+import GuestDashboard from "@/components/GuestDashboard"; 
 import { getGuestById } from "@/lib/supabase"; 
 import { Metadata } from "next";
 import { notFound } from "next/navigation";
 
-// 1. Cấu hình để Next.js không cache dữ liệu (Luôn lấy mới nhất từ Supabase)
+// 👇 QUAN TRỌNG: 2 dòng này để tắt Cache tuyệt đối
 export const revalidate = 0; 
 export const dynamic = 'force-dynamic';
 
@@ -11,37 +12,36 @@ interface GuestPageProps {
   params: Promise<{ guestId: string }>;
 }
 
-// 2. Hàm tạo SEO Title (Hiện tên khách trên tab trình duyệt/Google)
 export async function generateMetadata({ params }: GuestPageProps): Promise<Metadata> {
   const { guestId } = await params;
   const guest = await getGuestById(guestId);
-
   if (!guest) return { title: "Thiệp mời Lễ Tốt Nghiệp 2025" };
-
-  return {
-    title: `Gửi ${guest.name} | Thiệp Mời`,
-    openGraph: {
-      title: `Gửi ${guest.name} | Thiệp Mời`,
-      description: "Trân trọng kính mời bạn đến tham dự lễ tốt nghiệp của mình.",
-    }
-  };
+  return { title: `Gửi ${guest.name} | Thiệp Mời` };
 }
 
-// 3. Component chính
 export default async function GuestPage({ params }: GuestPageProps) {
   const { guestId } = await params;
   
-  // Gọi hàm lấy dữ liệu từ Supabase
+  // Lấy dữ liệu mới nhất từ Server
   const guest = await getGuestById(guestId);
 
-  // Nếu không thấy khách trong DB -> Trả về trang 404
   if (!guest) return notFound();
 
+  // 👇 LOGIC KIỂM TRA:
+  // Nếu database báo "is_confirmed" là true -> Vào Dashboard ngay
+  // Lưu ý: Hàm getGuestById phải trả về đúng field isConfirmed hoặc is_confirmed
+  const isConfirmed = guest.isConfirmed || guest.is_confirmed; 
+
+  if (isConfirmed) {
+    return <GuestDashboard guest={guest} />;
+  }
+
+  // Nếu chưa -> Hiện bìa thiệp để khách bấm nút Tham dự
   return (
     <MobileInvitation 
       guestName={guest.name} 
       guestId={guest.id}
-      isConfirmed={guest.isConfirmed} // Lưu ý: Đảm bảo hàm getGuestById trong lib/supabase.ts đã map 'is_confirmed' thành 'isConfirmed'
+      isConfirmed={isConfirmed}
       initialAttendance={guest.attendance}
       initialWish={guest.wish}
     />
