@@ -33,3 +33,29 @@ body {
     -ms-overflow-style: none;
     scrollbar-width: none;
 }
+
+/* Custom scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0a0a0a;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d4af37;
+  border-radius: 10px;
+  border: 2px solid #0a0a0a;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #e8c547;
+}
+
+/* Firefox scrollbar */
+* {
+  scrollbar-color: #d4af37 #0a0a0a;
+  scrollbar-width: thin;
+}

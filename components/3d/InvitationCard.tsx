@@ -16,7 +16,7 @@ interface InvitationProps {
     isConfirmed?: boolean;
     initialAttendance?: string;
     initialWish?: string;
-    onTabChange?: (tab: string) => void;
+    onTabChange?: (tab: 'wish' | 'chat' | 'card') => void;
 }
 
 // --- CẤU HÌNH ---
