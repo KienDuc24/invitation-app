@@ -1,82 +1,93 @@
+// app/api/chat/route.ts
 import { NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-// Lấy danh sách keys từ biến môi trường và tách thành mảng
+// 1. Cấu hình Key (Giữ nguyên logic cũ)
 const API_KEYS = (process.env.GEMINI_API_KEYS || "").split(',').map(k => k.trim()).filter(k => k);
 
-// Hàm chọn ngẫu nhiên một key để bắt đầu (Load Balancing)
-// Hoặc bạn có thể chạy tuần tự. Ở đây mình dùng cơ chế thử lần lượt khi lỗi.
+// --- CẤU HÌNH ĐỊA ĐIỂM & BẢN ĐỒ ---
+// Đây là biến Admin cập nhật thủ công (hoặc lấy từ DB sau này)
+const CURRENT_HOST_LOCATION = "Tòa nhà C5 - Tầng 3 (Phòng Hội trường)";
+const SCHOOL_MAP_IMAGE = "media/map2d.png"; // Bạn nhớ chép ảnh bản đồ vào public/media
+const GOOGLE_MAP_LINK = "https://maps.app.goo.gl/UTGcbpH1DBL6YRdn8"; // Link map trường bạn
+
 async function generateWithFallback(systemPrompt: string, userMessage: string) {
   let lastError = null;
-
-  // Xáo trộn danh sách key để không phải lúc nào cũng đè đầu key số 1
   const shuffledKeys = [...API_KEYS].sort(() => 0.5 - Math.random());
 
   for (const apiKey of shuffledKeys) {
     try {
-      console.log(`Đang thử với Key: ...${apiKey.slice(-4)}`);
-      
       const genAI = new GoogleGenerativeAI(apiKey);
+      // Update model mới của bạn
       const model = genAI.getGenerativeModel({ 
-        model: "gemini-2.5-flash-preview-09-2025", // Bản này nhanh, rẻ và đủ thông minh cho Chatbot
-        systemInstruction: systemPrompt, // Nhét tính cách Catmi vào đây
+        model: "gemini-2.5-flash-preview-09-2025", // Hoặc tên bản preview bạn đang dùng
+        systemInstruction: systemPrompt,
       });
 
       const result = await model.generateContent(userMessage);
-      const response = result.response;
-      return response.text(); // Trả về text nếu thành công
+      const response = await result.response;
+      return response.text(); 
 
     } catch (error: any) {
-      console.warn(`Key ...${apiKey.slice(-4)} bị lỗi:`, error.message);
+      console.warn(`Key ...${apiKey.slice(-4)} lỗi, đổi key...`);
       lastError = error;
-      // Gặp lỗi thì vòng lặp sẽ tự chạy sang key tiếp theo (continue)
+      continue; 
     }
   }
-
-  // Nếu chạy hết vòng lặp mà không return được thì ném lỗi
-  throw lastError || new Error("Tất cả API Keys đều tèo rồi!");
+  throw lastError || new Error("Hết Key rồi!");
 }
 
 export async function POST(req: Request) {
   try {
-    const { messages, guestName, guestStatus } = await req.json();
+    // Nhận thêm guestTags từ Frontend để phân loại đối tượng
+    const { messages, guestName, guestStatus, guestTags } = await req.json();
+    const lastUserMessage = messages[messages.length - 1]?.content || "Xin chào";
 
-    // Lấy tin nhắn cuối cùng của user để gửi (Gemini API dạng đơn giản nhất là gửi prompt text)
-    // Nếu bạn muốn gửi cả lịch sử chat, cần map lại format nhưng thường gửi câu cuối kèm context là đủ.
-    const lastUserMessage = messages[messages.length - 1]?.content || "";
+    // --- LOGIC PHÂN LOẠI ĐỐI TƯỢNG ---
+    const tagsStr = Array.isArray(guestTags) ? guestTags.join(', ').toLowerCase() : "";
+    
+    let toneInstruction = "";
+    if (tagsStr.includes('gia đình') || tagsStr.includes('phụ huynh') || tagsStr.includes('thầy cô')) {
+        toneInstruction = "Lễ phép, kính trọng, dạ thưa đầy đủ. Gọi người dùng là Cô/Chú/Bác hoặc Thầy/Cô.";
+    } else if (tagsStr.includes('bạn bè') || tagsStr.includes('bạn thân')) {
+        toneInstruction = "Trêu ghẹo, hài hước, trả treo, 'bố láo' một chút cho vui. Xưng 'tao-mày' hoặc 'tớ-cậu' hoặc 'Catmi-đằng ấy' tùy ngữ cảnh.";
+    } else {
+        toneInstruction = "Thân thiện, nhiệt tình nhưng vẫn giữ chút 'chảnh' của loài mèo. Gọi là 'Khách quý'.";
+    }
 
-    // --- TẠO SYSTEM PROMPT (TÍNH CÁCH CATMI) ---
+    // --- SYSTEM PROMPT MỚI ---
     const systemPrompt = `
-    BẠN LÀ AI: Bạn là Catmi, tinh linh lửa trại kiêm trợ lý ảo của website "Tiệc Tốt Nghiệp". 
-    Ngoại hình: Mèo lửa dễ thương.
-    Tính cách: Chảnh chọe, hay trả treo (sassy), nhưng nhiệt tình.
+    BẠN LÀ AI: 
+    Bạn là Catmi. 
+    - Quá khứ: Tinh linh lửa trại trong đồ án tốt nghiệp cũ.
+    - Hiện tại: Trợ lý ảo cho Lễ Tốt Nghiệp của Bùi Đức Kiên.
+    
+    THÔNG TIN NGƯỜI DÙNG:
+    - Tên: ${guestName || "Khách quý"}
+    - Nhóm: ${tagsStr || "Khách mời"}
+    - Trạng thái RSVP: ${guestStatus ? "Đã tham gia" : "Chưa xác nhận"}
 
-    THÔNG TIN KHÁCH HÀNG:
-    - Tên: ${guestName || "Khách ẩn danh"}
-    - Trạng thái: ${guestStatus ? "Đã Confirm (Hãy khen)" : "Chưa Confirm (Hãy giục điền form)"}
+    THÔNG TIN ĐỊA ĐIỂM (CHỈ ĐƯỜNG):
+    - Vị trí hiện tại của Kiên (Chủ tiệc): ${CURRENT_HOST_LOCATION}.
+    - Link Google Map: ${GOOGLE_MAP_LINK}
+    - Nếu khách hỏi đường đi, bản đồ: Hãy chỉ dẫn họ đến vị trí trên và nói "Để em gửi bản đồ cho nè".
+
+    TÍNH CÁCH & GIỌNG ĐIỆU (QUAN TRỌNG):
+    ${toneInstruction}
 
     QUY TẮC TRẢ LỜI:
-    1. BẮT BUỘC bắt đầu bằng một trong các tag sau trong ngoặc vuông: 
-       [Welcome], [Thinking], [Sassy], [Annoyed], [Tired], [Success], [Listening], [Playful], [Happy], [Sad], [Angry], [Cute].
-    2. Không xưng là AI/Bot. Xưng là "Catmi" hoặc "Em".
-    3. Ngắn gọn, dùng icon 🔥😼.
+    1. Bắt đầu câu bằng 1 Tag cảm xúc: [Welcome], [Thinking], [Sassy], [Annoyed], [Tired], [Success], [Listening], [Playful], [Happy], [Sad], [Angry], [Cute], [Guiding].
+    2. Nếu khách hỏi đường/vị trí: Dùng tag [Guiding].
+    3. Ngắn gọn, súc tích.
     `;
 
-    // Gọi hàm xử lý xoay tua Key
-    const aiResponseText = await generateWithFallback(systemPrompt, lastUserMessage);
+    const aiReply = await generateWithFallback(systemPrompt, lastUserMessage);
 
-    return NextResponse.json({ 
-        role: 'assistant', 
-        content: aiResponseText 
-    });
+    return NextResponse.json({ role: 'assistant', content: aiReply });
 
   } catch (error: any) {
-    console.error('Lỗi Catmi:', error);
     return NextResponse.json(
-      { 
-        role: 'assistant', 
-        content: '[Tired] Hic, mạng mẽo chán quá, não em load không nổi (Lỗi Server).' 
-      }, 
+      { role: 'assistant', content: '[Tired] Hic, server lỗi rồi khách quý ơi...' }, 
       { status: 500 }
     );
   }

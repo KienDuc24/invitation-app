@@ -1,213 +1,213 @@
-// components/CatmiChat.tsx
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { MessageCircle, X, Send, Loader2, Sparkles } from "lucide-react";
+import { X, Send, Loader2, Sparkles } from "lucide-react";
+import Image from "next/image";
 
-// Định nghĩa kiểu dữ liệu tin nhắn
-type Message = {
-  role: 'user' | 'assistant' | 'system';
-  content: string;
+// Map cảm xúc -> Ảnh GIF
+const CATMI_EXPRESSIONS: Record<string, string> = {
+    default: "/media/welcome.gif",   
+    amazed: "/media/amazed.gif",    
+    angry: "/media/angry.gif",      
+    annoyed: "/media/annoyed.gif",    
+    bye: "/media/bye.gif",          
+    confused: "/media/confused.gif",  
+    cute: "/media/cute.gif",        
+    focus: "/media/focus.gif",      
+    guild: "/media/guild.gif",
+    guiding: "/media/guild.gif",
+    happy: "/media/happy.gif",      
+    mad: "/media/mad.gif",          
+    question: "/media/question.gif",
+    sad: "/media/sad.gif",          
+    sassy: "/media/sassy.gif",      
+    searching: "/media/searching.gif",
+    success: "/media/success.gif",   
+    teasing: "/media/teasing.gif",   
+    thinking: "/media/thinking.gif",  
+    tired: "/media/tired.gif",       
+    welcome: "/media/welcome.gif",   
+    yessir: "/media/yessir.gif",
+    playful: "/media/teasing.gif",
+    listening: "/media/focus.gif"
 };
 
-// Props nhận vào để biết khách là ai
 interface CatmiChatProps {
-    guestName?: string;     // Tên khách (Lấy từ DB)
-    guestStatus?: boolean;  // Trạng thái confirm (Lấy từ DB)
+    guestName?: string;
+    guestStatus?: boolean;
+    guestTags?: string[]; 
+    guestInfor?: string; // 👈 Thêm prop mới nhận thông tin chi tiết
 }
 
-export default function CatmiChat({ guestName, guestStatus }: CatmiChatProps) {
+export default function CatmiChat({ guestName, guestStatus, guestTags, guestInfor }: CatmiChatProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  
-  // Tin nhắn chào mở đầu (Mặc định)
-  const [messages, setMessages] = useState<Message[]>([
-    { role: 'assistant', content: '[Welcome] Chào đằng ấy! Catmi nè 🔥. Cần hỏi gì về buổi tiệc hơm?' }
+  const [currentMood, setCurrentMood] = useState("welcome"); 
+
+  const [messages, setMessages] = useState<{role: string, content: string, type?: string}[]>([
+    { role: 'assistant', content: `Chào ${guestName || 'đằng ấy'}! Catmi nè 🔥. Cần hỏi gì về buổi tiệc hơm?` }
   ]);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Tự động cuộn xuống khi có tin mới
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isOpen]);
 
-  // Hàm gửi tin nhắn
+  // Xử lý Tag cảm xúc từ Bot
+  const processResponse = (fullText: string) => {
+    if (!fullText) return { cleanText: "", mood: "default", showMap: false };
+    
+    let mood = "default";
+    let showMap = false;
+    let cleanText = fullText;
+
+    // Regex bắt [Tag] ở đầu câu và lấy phần còn lại
+    const match = fullText.match(/^\[(.*?)\]\s*([\s\S]*)/);
+    if (match) {
+        let tag = match[1].toLowerCase();
+        cleanText = match[2];
+
+        // Chuẩn hóa tag
+        if (tag.includes('start')) tag = 'welcome';
+        if (tag.includes('processing')) tag = 'thinking';
+        if (tag.includes('low battery')) tag = 'tired';
+        if (tag.includes('found')) tag = 'success';
+        if (tag.includes('guiding') || tag.includes('guild')) {
+            mood = 'guiding';
+            showMap = true;
+        }
+
+        const foundKey = Object.keys(CATMI_EXPRESSIONS).find(k => tag.includes(k));
+        if (foundKey) mood = foundKey;
+    }
+    return { cleanText, mood, showMap };
+  };
+
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
 
-    const userMsg: Message = { role: 'user', content: input };
+    const userMsg = { role: 'user', content: input };
     setMessages(prev => [...prev, userMsg]);
     setInput("");
     setIsLoading(true);
+    setCurrentMood("thinking");
 
     try {
-      // Gọi API Next.js vừa tạo ở trên
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-            // Gửi kèm lịch sử chat (bỏ tin nhắn đầu tiên nếu là welcome giả)
-            messages: messages.filter(m => m.role !== 'system'), 
-            // Gửi kèm thông tin khách để Catmi biết
-            guestName: guestName || "Bạn giấu tên",
-            guestStatus: guestStatus
+            messages: [...messages, userMsg],
+            guestName,
+            guestStatus,
+            guestTags,
+            guestInfor // 👈 Gửi thông tin này lên server
         }),
       });
 
       const data = await res.json();
+      
+      if (data && data.content) {
+          const { cleanText, mood, showMap } = processResponse(data.content);
+          setCurrentMood(mood);
 
-      // Hàm chọn màu dựa trên từ khóa trong Tag
-        const getTagColor = (rawTag: string) => {
-            const t = rawTag?.toLowerCase();
-            
-            // Nhóm tích cực (Hồng/Xanh lá)
-            if (t.includes('welcome') || t.includes('happy') || t.includes('cute') || t.includes('success') || t.includes('applauding')) 
-                return 'bg-pink-500 text-white border-pink-600';
-            
-            // Nhóm đanh đá/tiêu cực (Đỏ/Cam)
-            if (t.includes('sassy') || t.includes('annoyed') || t.includes('angry') || t.includes('skeptical')) 
-                return 'bg-red-500 text-white border-red-600';
-            
-            // Nhóm suy tư/hướng dẫn (Xanh dương)
-            if (t.includes('thinking') || t.includes('guiding') || t.includes('deep focus')) 
-                return 'bg-blue-500 text-white border-blue-600';
-                
-            // Nhóm mệt mỏi/ngủ (Xám)
-            if (t.includes('tired') || t.includes('sleeping') || t.includes('goodbye')) 
-                return 'bg-gray-500 text-white border-gray-600';
+          // Render tin nhắn text
+          setMessages(prev => [...prev, { role: 'assistant', content: cleanText }]);
 
-            return 'bg-purple-500 text-white'; // Mặc định
-        };
-        
-      // Thêm câu trả lời của Catmi vào list
-      setMessages(prev => [...prev, data]);
-
+          // Render ảnh bản đồ nếu Bot gửi tag [Guiding]
+          if (showMap) {
+             setMessages(prev => [...prev, { 
+                 role: 'assistant', 
+                 content: '/media/map2d.png', // Đường dẫn ảnh bản đồ
+                 type: 'image' 
+             }]);
+          }
+      } 
     } catch (error) {
-      setMessages(prev => [...prev, { role: 'assistant', content: '[Tired] Mất kết nối với hành tinh mẹ rồi...' }]);
+      console.error(error);
+      setMessages(prev => [...prev, { role: 'assistant', content: 'Hic, Catmi bị ốm rồi (Lỗi kết nối)...' }]);
+      setCurrentMood("sad");
     } finally {
       setIsLoading(false);
     }
   };
 
-  // --- HÀM XỬ LÝ HIỂN THỊ TAG CẢM XÚC ---
-  // Ví dụ: "[Sassy] Sao anh hỏi nhiều thế?" -> Tách thành Tag "Sassy" và Text riêng
-  const parseContent = (content: string) => {
-    const match = content.match(/^\[(.*?)\]\s*([\s\S]*)/);
-    if (match) {
-        return { tag: match[1], text: match[2] };
-    }
-    return { tag: null, text: content };
-  };
-
-  // Màu sắc cho từng loại Tag (Optional - làm màu cho đẹp)
-  const getTagColor = (tag: string) => {
-      const t = tag?.toLowerCase();
-      if (t?.includes('sassy') || t?.includes('angry')) return 'bg-red-500 text-white';
-      if (t?.includes('happy') || t?.includes('welcome') || t?.includes('cute')) return 'bg-pink-500 text-white';
-      if (t?.includes('thinking')) return 'bg-blue-400 text-white';
-      return 'bg-gray-200 text-gray-700';
-  };
-
   return (
     <div className="fixed bottom-4 right-4 z-[9999] font-sans">
-      {/* Nút tròn mở Chat */}
       {!isOpen && (
         <button 
           onClick={() => setIsOpen(true)}
-          className="group relative w-14 h-14 bg-gradient-to-br from-orange-500 to-red-600 rounded-full shadow-xl flex items-center justify-center transition-transform hover:scale-110 active:scale-95"
+          className="group relative w-16 h-16 bg-white rounded-full shadow-xl flex items-center justify-center transition-transform hover:scale-110 border-2 border-orange-400 overflow-hidden"
         >
-          {/* Hiệu ứng lửa cháy */}
-          <div className="absolute inset-0 rounded-full border-2 border-yellow-400/50 animate-ping opacity-75"></div>
-          <span className="text-2xl">😼</span>
-          
-          {/* Tooltip nhỏ */}
-          <span className="absolute -top-10 right-0 bg-white text-black text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap font-bold">
-            Hỏi Catmi nè!
-          </span>
+          <div className="w-full h-full relative">
+            <Image 
+                src={CATMI_EXPRESSIONS[currentMood] || CATMI_EXPRESSIONS['default']} 
+                alt="Catmi" fill className="object-cover" sizes="64px" unoptimized
+            />
+          </div>
         </button>
       )}
 
-      {/* Cửa sổ Chat Box */}
       {isOpen && (
         <div className="w-[340px] h-[500px] flex flex-col bg-white rounded-2xl shadow-2xl overflow-hidden border border-orange-200 animate-in slide-in-from-bottom-10 fade-in duration-300">
-          
-          {/* Header */}
-          <div className="bg-gradient-to-r from-orange-500 to-red-600 p-4 flex justify-between items-center text-white shadow-md">
+          <div className="bg-gradient-to-r from-orange-500 to-red-600 p-3 flex justify-between items-center text-white shadow-md">
             <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center border-2 border-yellow-300">
-                    <span className="text-xl">🔥</span>
+                <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center border-2 border-yellow-300 overflow-hidden relative">
+                    <Image 
+                        src={CATMI_EXPRESSIONS[currentMood] || CATMI_EXPRESSIONS['default']} 
+                        alt="Avatar" fill className="object-cover" sizes="48px" unoptimized
+                    />
                 </div>
                 <div>
-                    <h3 className="font-bold text-sm flex items-center gap-1">
-                        Catmi <Sparkles size={12} className="text-yellow-300" />
-                    </h3>
-                    <p className="text-[10px] text-orange-100 opacity-90">Tinh linh lửa trại (AI)</p>
+                    <h3 className="font-bold text-sm flex items-center gap-1">Catmi <Sparkles size={12} className="text-yellow-300" /></h3>
+                    <p className="text-[10px] text-orange-100 opacity-90">Tinh linh lửa trại</p>
                 </div>
             </div>
-            <button onClick={() => setIsOpen(false)} className="hover:bg-white/20 p-1.5 rounded-full transition-colors">
-              <X size={18} />
-            </button>
+            <button onClick={() => setIsOpen(false)} className="hover:bg-white/20 p-1 rounded-full"><X size={20} /></button>
           </div>
 
-          {/* List Tin nhắn */}
           <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-orange-50/30 scroll-smooth">
-            {messages.map((msg, idx) => {
-              const { tag, text } = parseContent(msg.content);
-              const isUser = msg.role === 'user';
-
-              return (
-                <div key={idx} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-                   {!isUser && (
-                       <div className="w-6 h-6 rounded-full bg-orange-100 flex items-center justify-center mr-2 text-xs border border-orange-200 mt-1">😼</div>
-                   )}
-                   
-                   <div className={`max-w-[80%] rounded-2xl p-3 text-sm shadow-sm ${
-                       isUser 
-                        ? 'bg-blue-600 text-white rounded-br-none' 
-                        : 'bg-white border border-gray-100 text-gray-800 rounded-bl-none'
-                   }`}>
-                      {/* Hiển thị Tag cảm xúc nếu có */}
-                      {tag && !isUser && (
-                          <span className={`inline-block text-[10px] px-1.5 py-0.5 rounded font-bold uppercase mb-1.5 tracking-wider ${getTagColor(tag)}`}>
-                              {tag}
-                          </span>
-                      )}
-                      <p className="leading-relaxed">{text}</p>
-                   </div>
-                </div>
-              );
-            })}
-            
-            {/* Loading Indicator */}
+            {messages.map((msg, idx) => (
+              <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                 {msg.role !== 'user' && (
+                     <div className="w-8 h-8 rounded-full overflow-hidden mr-2 border border-orange-200 flex-shrink-0 relative">
+                        <Image src={CATMI_EXPRESSIONS[currentMood] || CATMI_EXPRESSIONS['default']} alt="Bot" fill className="object-cover" sizes="32px" unoptimized />
+                     </div>
+                 )}
+                 
+                 {/* Xử lý hiển thị Text hoặc Ảnh */}
+                 {msg.type === 'image' ? (
+                     <div className="relative w-48 h-32 rounded-lg overflow-hidden border border-orange-300 shadow-sm">
+                        <Image src={msg.content} alt="Map" fill className="object-cover" unoptimized />
+                     </div>
+                 ) : (
+                     <div className={`max-w-[80%] rounded-2xl p-3 text-sm shadow-sm ${
+                         msg.role === 'user' ? 'bg-blue-600 text-white rounded-br-none' : 'bg-white border border-gray-100 text-gray-800 rounded-bl-none'
+                     }`}>
+                        {msg.content}
+                     </div>
+                 )}
+              </div>
+            ))}
             {isLoading && (
-               <div className="flex justify-start items-center gap-2 pl-8">
+               <div className="flex justify-start items-center gap-2 pl-10">
                    <Loader2 className="w-4 h-4 animate-spin text-orange-500" />
-                   <span className="text-xs text-gray-400 italic">Catmi đang nghĩ...</span>
+                   <span className="text-xs text-gray-400 italic">Đang nhập...</span>
                </div>
             )}
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Input Area */}
           <div className="p-3 bg-white border-t border-gray-100 flex gap-2">
             <input
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
+              type="text" value={input} onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSend()}
               placeholder="Nhập tin nhắn..."
-              disabled={isLoading}
-              className="flex-1 bg-gray-100 text-black rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 focus:bg-white transition-all"
+              className="flex-1 bg-gray-100 rounded-full px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 text-black"
             />
-            <button 
-                onClick={handleSend}
-                disabled={isLoading || !input.trim()}
-                className="w-10 h-10 bg-orange-500 text-white rounded-xl flex items-center justify-center hover:bg-orange-600 active:scale-95 disabled:opacity-50 disabled:pointer-events-none transition-all shadow-md shadow-orange-500/20"
-            >
-              <Send size={18} />
-            </button>
+            <button onClick={handleSend} className="w-10 h-10 bg-orange-500 text-white rounded-full flex items-center justify-center hover:bg-orange-600 shadow-md"><Send size={18} /></button>
           </div>
         </div>
       )}

@@ -5,7 +5,7 @@ const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 export const supabase = createClient(supabaseUrl, supabaseKey);
 
-export type GuestInfo = {
+export type GuestInfor = {
   id: string;
   name: string;
   is_confirmed: boolean;
