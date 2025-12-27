@@ -1,11 +1,10 @@
-// components/CatmiChat.tsx
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { X, Send, Loader2, Sparkles, MapPin } from "lucide-react"; // Import thêm MapPin nếu thích icon
+import { X, Send, Loader2, Sparkles, MapPin, ZoomIn } from "lucide-react"; 
 import Image from "next/image";
 
-// ... (Giữ nguyên constant CATMI_EXPRESSIONS cũ) ...
+// ... (Giữ nguyên constant CATMI_EXPRESSIONS) ...
 const CATMI_EXPRESSIONS: Record<string, string> = {
     default: "/media/welcome.gif",   
     amazed: "/media/amazed.gif",    
@@ -45,6 +44,9 @@ export default function CatmiChat({ guestName, guestStatus, guestTags, guestInfo
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [currentMood, setCurrentMood] = useState("welcome"); 
+  
+  // State mới: Quản lý xem ảnh phóng to
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   const [messages, setMessages] = useState<{role: string, content: string, type?: string}[]>([
     { role: 'assistant', content: `Chào ${guestName || 'đằng ấy'}! Catmi nè 🔥. Cần hỏi gì về buổi tiệc hơm?` }
@@ -80,26 +82,20 @@ export default function CatmiChat({ guestName, guestStatus, guestTags, guestInfo
     return { cleanText, mood, showMap };
   };
 
-  // 👇 HÀM MỚI: Render text có chứa Link Markdown [Text](Url)
+  // Render text có chứa Link Markdown [Text](Url)
   const renderMessageContent = (text: string) => {
-    // Regex tìm chuỗi [Text](Url)
     const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
     const parts = [];
     let lastIndex = 0;
     let match;
 
     while ((match = linkRegex.exec(text)) !== null) {
-      // Đẩy phần text thường trước link vào
       if (match.index > lastIndex) {
         parts.push(text.substring(lastIndex, match.index));
       }
-      // Đẩy phần Link vào (hiển thị màu xanh, bấm được)
       parts.push(
         <a 
-          key={match.index} 
-          href={match[2]} 
-          target="_blank" 
-          rel="noopener noreferrer"
+          key={match.index} href={match[2]} target="_blank" rel="noopener noreferrer"
           className="text-blue-600 underline font-bold hover:text-blue-800 mx-1"
         >
           {match[1]}
@@ -107,11 +103,9 @@ export default function CatmiChat({ guestName, guestStatus, guestTags, guestInfo
       );
       lastIndex = linkRegex.lastIndex;
     }
-    // Đẩy phần text còn lại
     if (lastIndex < text.length) {
       parts.push(text.substring(lastIndex));
     }
-
     return parts.length > 0 ? parts : text;
   };
 
@@ -130,10 +124,7 @@ export default function CatmiChat({ guestName, guestStatus, guestTags, guestInfo
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
             messages: [...messages, userMsg],
-            guestName,
-            guestStatus,
-            guestTags,
-            guestInfor
+            guestName, guestStatus, guestTags, guestInfor
         }),
       });
 
@@ -148,7 +139,7 @@ export default function CatmiChat({ guestName, guestStatus, guestTags, guestInfo
           if (showMap) {
              setMessages(prev => [...prev, { 
                  role: 'assistant', 
-                 content: '/media/map2d.png', // Đổi lại đúng tên file ảnh bạn up
+                 content: '/media/map2d.png', 
                  type: 'image' 
              }]);
           }
@@ -163,6 +154,8 @@ export default function CatmiChat({ guestName, guestStatus, guestTags, guestInfo
 
   return (
     <div className="fixed bottom-4 right-4 z-[9999] font-sans">
+      
+      {/* 1. NÚT TRÒN MỞ CHAT */}
       {!isOpen && (
         <button 
           onClick={() => setIsOpen(true)}
@@ -174,8 +167,10 @@ export default function CatmiChat({ guestName, guestStatus, guestTags, guestInfo
         </button>
       )}
 
+      {/* 2. KHUNG CHAT */}
       {isOpen && (
         <div className="w-[340px] h-[500px] flex flex-col bg-white rounded-2xl shadow-2xl overflow-hidden border border-orange-200 animate-in slide-in-from-bottom-10 fade-in duration-300">
+          {/* Header */}
           <div className="bg-gradient-to-r from-orange-500 to-red-600 p-3 flex justify-between items-center text-white shadow-md">
             <div className="flex items-center gap-3">
                 <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center border-2 border-yellow-300 overflow-hidden relative">
@@ -189,6 +184,7 @@ export default function CatmiChat({ guestName, guestStatus, guestTags, guestInfo
             <button onClick={() => setIsOpen(false)} className="hover:bg-white/20 p-1 rounded-full"><X size={20} /></button>
           </div>
 
+          {/* Body Chat */}
           <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-orange-50/30 scroll-smooth">
             {messages.map((msg, idx) => (
               <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -199,15 +195,23 @@ export default function CatmiChat({ guestName, guestStatus, guestTags, guestInfo
                  )}
                  
                  {msg.type === 'image' ? (
-                     <div className="relative w-48 h-32 rounded-lg overflow-hidden border border-orange-300 shadow-sm cursor-pointer group">
+                     // --- PHẦN HIỂN THỊ ẢNH (Bấm để xem) ---
+                     <div 
+                        onClick={() => setPreviewImage(msg.content)} // Sự kiện mở Lightbox
+                        className="relative w-48 h-32 rounded-lg overflow-hidden border border-orange-300 shadow-sm cursor-pointer group hover:shadow-md transition-all"
+                     >
                         <Image src={msg.content} alt="Map" fill className="object-cover transition-transform group-hover:scale-105" unoptimized />
-                        <div className="absolute bottom-0 w-full bg-black/50 text-white text-[10px] p-1 text-center">Bấm để phóng to</div>
+                        
+                        {/* Overlay icon Zoom */}
+                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                            <ZoomIn className="text-white opacity-0 group-hover:opacity-100 transition-opacity" size={24} />
+                        </div>
+                        <div className="absolute bottom-0 w-full bg-black/60 text-white text-[10px] p-1 text-center font-bold">Bấm để phóng to</div>
                      </div>
                  ) : (
                      <div className={`max-w-[80%] rounded-2xl p-3 text-sm shadow-sm ${
                          msg.role === 'user' ? 'bg-blue-600 text-white rounded-br-none' : 'bg-white border border-gray-100 text-gray-800 rounded-bl-none'
                      }`}>
-                        {/* 👇 DÙNG HÀM RENDER MỚI Ở ĐÂY */}
                         {msg.role === 'user' ? msg.content : renderMessageContent(msg.content)}
                      </div>
                  )}
@@ -222,6 +226,7 @@ export default function CatmiChat({ guestName, guestStatus, guestTags, guestInfo
             <div ref={messagesEndRef} />
           </div>
 
+          {/* Footer Input */}
           <div className="p-3 bg-white border-t border-gray-100 flex gap-2">
             <input
               type="text" value={input} onChange={(e) => setInput(e.target.value)}
@@ -233,6 +238,30 @@ export default function CatmiChat({ guestName, guestStatus, guestTags, guestInfo
           </div>
         </div>
       )}
+
+      {/* 3. LIGHTBOX XEM ẢNH FULLSCREEN (MỚI) */}
+      {previewImage && (
+          <div 
+            className="fixed inset-0 z-[10000] bg-black/95 flex items-center justify-center p-4 backdrop-blur-md animate-in fade-in duration-200"
+            onClick={() => setPreviewImage(null)} // Bấm ra ngoài để đóng
+          >
+              {/* Nút đóng */}
+              <button 
+                onClick={() => setPreviewImage(null)}
+                className="absolute top-5 right-5 p-3 bg-white/10 rounded-full text-white hover:bg-white/20 transition-colors z-50"
+              >
+                <X size={24}/>
+              </button>
+
+              {/* Ảnh Full */}
+              <img 
+                src={previewImage} 
+                className="max-w-full max-h-full rounded-lg shadow-2xl object-contain cursor-zoom-out" 
+                alt="Preview"
+              />
+          </div>
+      )}
+
     </div>
   );
 }
