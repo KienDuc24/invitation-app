@@ -71,24 +71,20 @@ export default function ChatGroup({ currentUser, groupTag, onBack, onLeaveGroup 
     fetchGroupInfo();
   }, [groupTag]);
 
-  // --- 2. HÀM CẬP NHẬT TRẠNG THÁI ĐÃ XEM (FIX LỖI TEXT/UUID) ---
-const markAsRead = async () => {
-  try {
-    const { error } = await supabase
-      .from('group_members')
-      .update({ last_viewed_at: new Date().toISOString() })
-      .eq('group_tag', groupTag)
-      .eq('guest_id', String(currentUser.id)); // Đảm bảo ép kiểu string
+  // --- 2. HÀM CẬP NHẬT TRẠNG THÁI ĐÃ XEM ---
+  const markAsRead = async () => {
+    try {
+      const { error } = await supabase
+        .from('group_members')
+        .update({ last_viewed_at: new Date().toISOString() })
+        .eq('group_tag', groupTag)
+        .eq('guest_id', String(currentUser.id)); // Fix lỗi UUID/Text bằng ép kiểu tường minh
 
-    if (error) {
-      console.error("❌ Lỗi cập nhật đã xem:", error.message);
-    } else {
-      console.log("✅ Đã cập nhật mốc thời gian xem cho nhóm:", groupTag);
+      if (error) console.error("❌ Lỗi cập nhật đã xem:", error.message);
+    } catch (e) {
+      console.error("Error marking as read:", e);
     }
-  } catch (e) {
-    console.error("Error marking as read:", e);
-  }
-};
+  };
 
   // --- 3. LOAD TIN NHẮN & REALTIME ---
   useEffect(() => {
@@ -120,17 +116,15 @@ const markAsRead = async () => {
         if (container) {
             const isAtBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 150;
             
-            // Nếu mình không phải người gửi
             if (newMsg.sender_id !== String(currentUser.id)) {
                 if (isAtBottom) {
                     setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
-                    markAsRead(); // Cập nhật mốc thời gian đã xem ngay lập tức
+                    markAsRead(); 
                 } else {
                     setUnreadInChat(prev => prev + 1);
                     setShowScrollButton(true);
                 }
             } else {
-                // Nếu mình là người gửi, luôn cuộn xuống
                 setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
                 markAsRead();
             }
@@ -140,7 +134,7 @@ const markAsRead = async () => {
     return () => { supabase.removeChannel(channel); };
   }, [groupTag, currentUser.id]);
 
-  // --- 4. XỬ LÝ CUỘN (SCROLL) ---
+  // --- 4. XỬ LÝ CUỘN ---
   const handleScroll = () => {
       const container = scrollContainerRef.current;
       if (!container) return;
@@ -179,7 +173,7 @@ const markAsRead = async () => {
 
       const { error } = await supabase.from('messages').insert({ 
           group_tag: groupTag, 
-          sender_id: String(currentUser.id), // Đảm bảo là string
+          sender_id: String(currentUser.id), 
           sender_name: currentUser.name, 
           sender_avatar: userAvatar, 
           content: newMessage || "", 
@@ -326,7 +320,7 @@ const markAsRead = async () => {
           )}
         </div>
 
-        {/* INPUT SECTION */}
+        {/* INPUT */}
         <div className="p-3 bg-[#1a1a1a] border-t border-[#333]">
           {file && (
               <div className="flex items-center gap-3 mb-3 bg-[#111] p-2 rounded-lg border border-[#333] w-fit shadow-lg animate-in slide-in-from-bottom-2">
@@ -377,28 +371,32 @@ function ChatInfoSidebar({ groupTag, currentUser, onClose, messages, onLeave }: 
         if (activeTab === 'members') {
             const fetchMembers = async () => {
                 setLoading(true);
-                const { data } = await supabase.from('group_members').select('guests(id, name, tags)').eq('group_tag', groupTag);
-                const list = data?.map((i: any) => ({ id: i.guests.id, name: i.guests.name, isAdmin: i.guests.tags?.includes('admin') })) || [];
-                if (!list.find(m => m.isAdmin)) list.unshift({ id: "admin", name: "Đức Kiên", isAdmin: true });
+                // FETCH THÊM avatar_url TỪ BẢNG GUESTS
+                const { data } = await supabase.from('group_members').select('guests(id, name, tags, avatar_url)').eq('group_tag', groupTag);
+                const list = data?.map((i: any) => ({ 
+                    id: i.guests.id, 
+                    name: i.guests.name, 
+                    avatar_url: i.guests.avatar_url, 
+                    isAdmin: i.guests.tags?.includes('admin') 
+                })) || [];
+                if (!list.find(m => m.isAdmin)) list.unshift({ id: "admin", name: "Đức Kiên", isAdmin: true, avatar_url: null });
                 setMembers(list);
                 setLoading(false);
             };
             fetchMembers();
         }
-    }, [activeTab, groupTag, isAdding]);
+    }, [activeTab, groupTag, isAdding, currentUser.avatar_url]);
 
     const fetchCandidates = async () => {
         setLoadingCandidates(true);
         const { data: allGuests } = await supabase.from('guests').select('id, name, tags');
         const currentMemberIds = members.map(m => String(m.id));
         const userTags = currentUser.tags || [];
-
         const available = allGuests?.filter((g: any) => {
             if (currentMemberIds.includes(String(g.id)) || String(g.id) === String(currentUser.id)) return false;
             const candidateTags = g.tags || [];
             return userTags.some((t: string) => candidateTags.includes(t));
         }) || [];
-
         setCandidates(available);
         setLoadingCandidates(false);
     };
@@ -408,9 +406,7 @@ function ChatInfoSidebar({ groupTag, currentUser, onClose, messages, onLeave }: 
             await supabase.from('group_members').insert({ group_tag: groupTag, guest_id: String(guestId) });
             setCandidates(prev => prev.filter(c => c.id !== guestId));
             alert("Đã thêm thành viên!");
-        } catch (error) {
-            alert("Lỗi khi thêm thành viên.");
-        }
+        } catch (error) { alert("Lỗi khi thêm thành viên."); }
     };
 
     const handleLeaveGroup = async () => {
@@ -418,9 +414,7 @@ function ChatInfoSidebar({ groupTag, currentUser, onClose, messages, onLeave }: 
             try {
                 await supabase.from('group_members').delete().match({ group_tag: groupTag, guest_id: String(currentUser.id) });
                 if (onLeave) onLeave();
-            } catch (error) {
-                alert("Lỗi khi rời nhóm");
-            }
+            } catch (error) { alert("Lỗi khi rời nhóm"); }
         }
     };
 
@@ -430,12 +424,10 @@ function ChatInfoSidebar({ groupTag, currentUser, onClose, messages, onLeave }: 
                 <h3 className="font-bold text-[#d4af37] text-sm uppercase">Thông tin nhóm</h3>
                 <button onClick={onClose} className="p-1 hover:bg-[#333] rounded transition-colors"><X size={18} className="text-gray-400 hover:text-white"/></button>
             </div>
-            
             <div className="flex border-b border-[#333] bg-[#222]">
                 <button onClick={() => setActiveTab('members')} className={`flex-1 py-3 text-xs font-bold flex items-center justify-center gap-1 transition-colors ${activeTab === 'members' ? 'text-[#d4af37] border-b-2 border-[#d4af37]' : 'text-gray-500 hover:text-white'}`}><Users size={14} /> Thành viên</button>
                 <button onClick={() => setActiveTab('media')} className={`flex-1 py-3 text-xs font-bold flex items-center justify-center gap-1 transition-colors ${activeTab === 'media' ? 'text-[#d4af37] border-b-2 border-[#d4af37]' : 'text-gray-500 hover:text-white'}`}><Grid size={14} /> Media ({mediaList.length})</button>
             </div>
-
             <div className="flex-1 overflow-y-auto p-4 bg-[#1a1a1a]">
                 {activeTab === 'members' ? (
                     <>
@@ -450,8 +442,8 @@ function ChatInfoSidebar({ groupTag, currentUser, onClose, messages, onLeave }: 
                         {isAdding && (
                             <div className="mb-4 p-3 bg-[#111] rounded-xl border border-[#333] animate-in zoom-in-95">
                                 <p className="text-[10px] uppercase font-bold text-gray-500 mb-2">Người quen cùng nhóm:</p>
-                                <div className="max-h-40 overflow-y-auto space-y-1">
-                                    {loadingCandidates ? <Loader2 className="animate-spin mx-auto text-gray-500" size={16}/> : candidates.length === 0 ? <p className="text-center text-xs text-gray-500">Không có ai.</p> : 
+                                <div className="max-h-40 overflow-y-auto space-y-1 scrollbar-hide">
+                                    {loadingCandidates ? <Loader2 className="animate-spin mx-auto text-gray-500" size={16}/> : candidates.length === 0 ? <p className="text-center text-xs text-gray-500">Không có ai phù hợp.</p> : 
                                         candidates.map(c => (
                                             <div key={c.id} className="flex items-center justify-between p-2 hover:bg-[#222] rounded-lg cursor-pointer group" onClick={() => handleAddMember(c.id)}>
                                                 <span className="text-xs text-gray-300">{c.name}</span>
@@ -465,7 +457,9 @@ function ChatInfoSidebar({ groupTag, currentUser, onClose, messages, onLeave }: 
                         <div className="space-y-3">
                             {loading ? <div className="text-center text-xs text-gray-500">Đang tải...</div> : members.map((mem, idx) => (
                                 <div key={idx} className="flex items-center gap-3 p-2 hover:bg-[#222] rounded-lg transition-colors">
-                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shadow-sm ${mem.isAdmin ? 'bg-[#d4af37] text-black' : 'bg-[#333] text-gray-300'}`}>{mem.name.charAt(0)}</div>
+                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shadow-sm border ${mem.isAdmin ? 'bg-[#d4af37] text-black border-[#d4af37]' : 'bg-[#333] text-gray-300 border-[#444]'} overflow-hidden`}>
+                                        {mem.avatar_url ? <img src={mem.avatar_url} className="w-full h-full object-cover" alt="avatar" /> : mem.name.charAt(0)}
+                                    </div>
                                     <div className="flex-1 min-w-0">
                                         <p className={`text-xs truncate font-medium ${mem.isAdmin ? 'text-[#d4af37]' : 'text-gray-200'}`}>{mem.name}</p>
                                         {mem.isAdmin && <p className="text-[9px] text-gray-500">Quản trị viên</p>}
