@@ -2,11 +2,18 @@
 
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
-import { Users, CheckCircle, XCircle, MessageSquare, Lock, Loader2, MessageCircle } from "lucide-react";
+import { Users, CheckCircle, XCircle, MessageSquare, Lock, Loader2, MessageCircle, Hash } from "lucide-react";
 import ChatGroup from "@/components/ChatGroup"; 
 
 // Ép trang này luôn tải dữ liệu mới nhất (không cache)
 export const dynamic = 'force-dynamic';
+
+// Interface cho thông tin nhóm trong Admin
+interface AdminGroupInfo {
+    tag: string;
+    name: string;
+    avatar_url?: string;
+}
 
 export default function AdminPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -21,10 +28,10 @@ export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<'overview' | 'wishes' | 'chat'>('overview');
 
   // State cho phần Chat Admin
-  const [chatGroups, setChatGroups] = useState<string[]>(['general']);
+  const [chatGroups, setChatGroups] = useState<AdminGroupInfo[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<string>('general');
   
-  // --- USER ADMIN THỰC TẾ (Sẽ lấy từ DB) ---
+  // --- USER ADMIN THỰC TẾ ---
   const [adminUser, setAdminUser] = useState<any>(null);
 
   // --- MÃ PIN BẢO MẬT ---
@@ -56,30 +63,43 @@ export default function AdminPage() {
       .select('*, guests(name)')
       .order('created_at', { ascending: false });
 
+    // 3. Lấy thông tin chi tiết nhóm (Tên, Avatar) từ bảng chat_groups
+    const { data: groupsInfoData } = await supabase
+      .from('chat_groups')
+      .select('*');
+
+    // Tạo Map để tra cứu thông tin nhóm nhanh
+    const groupsInfoMap: Record<string, any> = {};
+    groupsInfoData?.forEach((g: any) => {
+        groupsInfoMap[g.tag] = g;
+    });
+
     if (guestsData) {
         setGuests(guestsData);
 
-        // --- A. TÌM NICK ADMIN ĐỂ LẤY ID THẬT ---
+        // --- A. TÌM NICK ADMIN ---
         const foundAdmin = guestsData.find((g: any) => g.tags && g.tags.includes('admin'));
         
         if (foundAdmin) {
             setAdminUser({
-                id: foundAdmin.id, // ID thật từ DB -> Chat OK
-                name: "Đức Kiên",
-                shortName: "DK", 
-                role: "Host"
+                id: foundAdmin.id, 
+                name: "Đức Kiên (Admin)",
+                shortName: "AD", 
+                role: "Host",
+                tags: ['admin'] // Quan trọng để ChatGroup nhận diện
             });
         } else {
-            console.warn("CẢNH BÁO: Chưa tìm thấy user có tag 'admin'. Hãy chạy lệnh SQL Insert!");
-            // Fallback tạm (Chat sẽ lỗi nếu dùng cái này)
+            // Fallback nếu chưa tạo nick admin
             setAdminUser({
                 id: 'admin-host-id',
                 name: 'Đức Kiên',
-                shortName: 'DK'
+                shortName: 'DK',
+                tags: ['admin']
             });
         }
 
-        // --- B. TẠO LIST NHÓM CHAT (Lọc bỏ tag 'admin') ---
+        // --- B. TẠO LIST NHÓM CHAT ---
+        // Lấy tất cả các tag xuất hiện trong danh sách khách mời
         const tags = new Set<string>(['general']);
         guestsData.forEach((g: any) => {
             if (g.tags && Array.isArray(g.tags)) {
@@ -88,14 +108,25 @@ export default function AdminPage() {
                 });
             }
         });
-        setChatGroups(Array.from(tags));
+
+        // Convert sang object đầy đủ thông tin (Name, Avatar)
+        const formattedGroups: AdminGroupInfo[] = Array.from(tags).map(tag => {
+            const info = groupsInfoMap[tag];
+            return {
+                tag: tag,
+                name: info?.name || (tag === 'general' ? 'Hội trường chính' : `Nhóm ${tag}`),
+                avatar_url: info?.avatar_url
+            };
+        });
+
+        setChatGroups(formattedGroups);
     }
 
     if (confessionsData) setConfessions(confessionsData);
     setLoading(false);
   };
 
-  // --- TÍNH TOÁN THỐNG KÊ (Loại trừ Admin ra) ---
+  // --- TÍNH TOÁN THỐNG KÊ ---
   const realGuests = guests.filter(g => !g.tags?.includes('admin'));
   const totalGuests = realGuests.length;
   const confirmedGuests = realGuests.filter(g => g.is_confirmed && g.attendance === 'Có tham dự').length;
@@ -203,9 +234,9 @@ export default function AdminPage() {
         {/* --- TAB: WISHES --- */}
         {activeTab === 'wishes' && (
            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {confessions.length === 0 ? <div className="col-span-full text-center py-20 text-gray-500 italic">Chưa có lưu bút nào.</div> :
-                confessions.map((item) => (
-                  <div key={item.id} className="bg-[#111] border border-[#333] rounded-2xl overflow-hidden shadow-lg flex flex-col">
+             {confessions.length === 0 ? <div className="col-span-full text-center py-20 text-gray-500 italic">Chưa có lưu bút nào.</div> :
+               confessions.map((item) => (
+                 <div key={item.id} className="bg-[#111] border border-[#333] rounded-2xl overflow-hidden shadow-lg flex flex-col">
                      {item.image_url && <div className="relative h-48 bg-[#000]"><img src={item.image_url} alt="Kỷ niệm" className="w-full h-full object-cover" /></div>}
                      <div className="p-4 flex-1 flex flex-col">
                         <div className="flex items-center gap-2 mb-3">
@@ -214,13 +245,13 @@ export default function AdminPage() {
                         </div>
                         {item.content && <div className="bg-[#1a1a1a] p-3 rounded-xl text-gray-300 text-sm italic relative"><MessageSquare size={12} className="absolute -top-1 -left-1 text-[#333] fill-[#333]" />"{item.content}"</div>}
                      </div>
-                  </div>
-                ))
-              }
+                 </div>
+               ))
+             }
            </div>
         )}
 
-        {/* --- TAB: CHAT ADMIN (ĐÃ SỬA) --- */}
+        {/* --- TAB: CHAT ADMIN (UPDATED) --- */}
         {activeTab === 'chat' && (
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6 h-[600px]">
                 {/* 1. CỘT TRÁI: DANH SÁCH NHÓM */}
@@ -229,10 +260,14 @@ export default function AdminPage() {
                         <MessageCircle size={14} /> Chọn Nhóm
                     </h3>
                     <div className="space-y-2 overflow-y-auto flex-1 pr-2">
-                        {chatGroups.map(tag => (
-                            <button key={tag} onClick={() => setSelectedGroup(tag)} className={`w-full text-left px-4 py-3 rounded-xl text-sm font-bold transition-all flex items-center justify-between group ${selectedGroup === tag ? 'bg-[#d4af37] text-black shadow-lg shadow-[#d4af37]/20' : 'bg-[#1a1a1a] text-gray-400 hover:bg-[#222] hover:text-white'}`}>
-                                <span className="truncate">#{tag}</span>
-                                {selectedGroup === tag && <div className="w-2 h-2 bg-black rounded-full animate-pulse shrink-0"></div>}
+                        {chatGroups.map(group => (
+                            <button key={group.tag} onClick={() => setSelectedGroup(group.tag)} className={`w-full text-left px-4 py-3 rounded-xl text-sm font-bold transition-all flex items-center gap-3 group ${selectedGroup === group.tag ? 'bg-[#d4af37] text-black shadow-lg shadow-[#d4af37]/20' : 'bg-[#1a1a1a] text-gray-400 hover:bg-[#222] hover:text-white'}`}>
+                                <div className={`w-8 h-8 rounded-full border border-current flex items-center justify-center overflow-hidden shrink-0 ${selectedGroup === group.tag ? 'border-black/20' : 'border-gray-600'}`}>
+                                    {group.avatar_url ? <img src={group.avatar_url} className="w-full h-full object-cover"/> : <Hash size={14}/>}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                    <p className="truncate">{group.name}</p>
+                                </div>
                             </button>
                         ))}
                     </div>
@@ -247,12 +282,17 @@ export default function AdminPage() {
                         </div>
                         <div className="pt-10 h-full">
                             {adminUser ? (
-                                <ChatGroup currentUser={adminUser} groupTag={selectedGroup} />
+                                <ChatGroup 
+                                    currentUser={adminUser} 
+                                    groupTag={selectedGroup} 
+                                    onBack={() => {}} // Admin desktop không cần back
+                                    onLeaveGroup={() => {}} // Admin không được rời nhóm ở đây
+                                />
                             ) : (
                                 <div className="h-full flex flex-col items-center justify-center text-gray-500 p-4 text-center">
                                     <Loader2 size={32} className="animate-spin text-[#d4af37] mb-2"/>
                                     <p>Đang tìm nick Admin...</p>
-                                    <p className="text-xs text-red-400 mt-2">Nếu quá lâu, hãy kiểm tra đã chạy lệnh SQL chưa.</p>
+                                    <p className="text-xs text-red-400 mt-2">Đảm bảo bạn đã có user với tag 'admin' trong Database.</p>
                                 </div>
                             )}
                         </div>

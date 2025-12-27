@@ -29,15 +29,6 @@ export default async function GuestPage({ params }: GuestPageProps) {
 
   const isConfirmed = guest.isConfirmed || guest.is_confirmed;
 
-  // 🐛 DEBUG: Kiểm tra dữ liệu infor
-  console.log('🔍 Guest Data Loaded:', {
-    name: guest.name,
-    tags: guest.tags,
-    infor: guest.infor,
-    info: guest.info,
-    allKeys: Object.keys(guest)
-  });
-
   return (
     <>
       {/* 1. Giao diện chính */}
