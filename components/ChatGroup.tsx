@@ -3,7 +3,7 @@
 import { supabase } from "@/lib/supabase";
 import { 
   Send, Image as ImageIcon, X, Loader2, Info, 
-  Users, Grid, Crown, ZoomIn, ArrowLeft, ArrowDown, 
+  Users, Grid, Crown, ArrowLeft, ArrowDown, 
   LogOut, UserPlus, Camera, Edit3, Save 
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -31,7 +31,7 @@ export default function ChatGroup({ currentUser, groupTag, onBack, onLeaveGroup 
   const [file, setFile] = useState<File | null>(null);
   const [isSending, setIsSending] = useState(false);
   
-  // State thông tin nhóm (Tên & Avatar)
+  // State thông tin nhóm
   const [groupName, setGroupName] = useState(`Nhóm ${groupTag}`);
   const [groupAvatar, setGroupAvatar] = useState<string | null>(null);
   
@@ -41,7 +41,7 @@ export default function ChatGroup({ currentUser, groupTag, onBack, onLeaveGroup 
   const [editFile, setEditFile] = useState<File | null>(null);
   const [isSavingGroup, setIsSavingGroup] = useState(false);
 
-  // State giao diện khác
+  // State giao diện
   const [showInfo, setShowInfo] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [showScrollButton, setShowScrollButton] = useState(false); 
@@ -52,7 +52,7 @@ export default function ChatGroup({ currentUser, groupTag, onBack, onLeaveGroup 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const groupAvatarInputRef = useRef<HTMLInputElement>(null);
 
-  // --- HÀM: LẤY THÔNG TIN NHÓM TỪ DB ---
+  // --- 1. LẤY THÔNG TIN NHÓM TỪ DB ---
   useEffect(() => {
     const fetchGroupInfo = async () => {
         let name = groupTag === 'general' ? 'Hội trường chính' : `Nhóm ${groupTag}`;
@@ -71,82 +71,96 @@ export default function ChatGroup({ currentUser, groupTag, onBack, onLeaveGroup 
     fetchGroupInfo();
   }, [groupTag]);
 
-  // --- HÀM: LƯU THÔNG TIN NHÓM ---
-  const handleUpdateGroupInfo = async () => {
-      setIsSavingGroup(true);
-      try {
-          let newAvatarUrl = groupAvatar;
+  // --- 2. HÀM CẬP NHẬT TRẠNG THÁI ĐÃ XEM (FIX LỖI TEXT/UUID) ---
+const markAsRead = async () => {
+  try {
+    const { error } = await supabase
+      .from('group_members')
+      .update({ last_viewed_at: new Date().toISOString() })
+      .eq('group_tag', groupTag)
+      .eq('guest_id', String(currentUser.id)); // Đảm bảo ép kiểu string
 
-          if (editFile) {
-              const fileExt = editFile.name.split('.').pop();
-              const fileName = `${groupTag}_${Date.now()}.${fileExt}`;
-              const { error: uploadError } = await supabase.storage.from('group-avatars').upload(fileName, editFile, { upsert: true });
-              
-              if (!uploadError) {
-                  const { data } = supabase.storage.from('group-avatars').getPublicUrl(fileName);
-                  newAvatarUrl = data.publicUrl;
-              }
-          }
+    if (error) {
+      console.error("❌ Lỗi cập nhật đã xem:", error.message);
+    } else {
+      console.log("✅ Đã cập nhật mốc thời gian xem cho nhóm:", groupTag);
+    }
+  } catch (e) {
+    console.error("Error marking as read:", e);
+  }
+};
 
-          const { error } = await supabase.from('chat_groups').upsert({
-              tag: groupTag,
-              name: editName,
-              avatar_url: newAvatarUrl
-          });
-
-          if (!error) {
-              setGroupName(editName);
-              setGroupAvatar(newAvatarUrl);
-              setIsEditingGroup(false);
-              setEditFile(null);
-              alert("Cập nhật nhóm thành công!");
-          } else {
-              alert("Lỗi cập nhật nhóm.");
-          }
-
-      } catch (error) {
-          console.error(error);
-      } finally {
-          setIsSavingGroup(false);
-      }
-  };
-
-  const markAsRead = async () => {
-      await supabase.from('group_members').update({ last_viewed_at: new Date().toISOString() }).match({ group_tag: groupTag, guest_id: currentUser.id });
-  };
-
+  // --- 3. LOAD TIN NHẮN & REALTIME ---
   useEffect(() => {
-    markAsRead();
+    markAsRead(); // Cập nhật ngay khi vào nhóm
+
     const fetchMessages = async () => {
-      const { data } = await supabase.from('messages').select('*').eq('group_tag', groupTag).order('created_at', { ascending: true });
+      const { data } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('group_tag', groupTag)
+        .order('created_at', { ascending: true });
       if (data) setMessages(data);
+      setTimeout(() => messagesEndRef.current?.scrollIntoView(), 100);
     };
+    
     fetchMessages();
-    const channel = supabase.channel(`chat:${groupTag}`).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `group_tag=eq.${groupTag}` }, 
-      (payload) => {
+
+    const channel = supabase.channel(`chat:${groupTag}`)
+      .on('postgres_changes', { 
+          event: 'INSERT', 
+          schema: 'public', 
+          table: 'messages', 
+          filter: `group_tag=eq.${groupTag}` 
+      }, (payload) => {
         const newMsg = payload.new as Message;
         setMessages((prev) => [...prev, newMsg]);
+
         const container = scrollContainerRef.current;
         if (container) {
-            const isAtBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 100;
-            if (isAtBottom) { setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100); markAsRead(); } 
-            else { setUnreadInChat(prev => prev + 1); setShowScrollButton(true); }
+            const isAtBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 150;
+            
+            // Nếu mình không phải người gửi
+            if (newMsg.sender_id !== String(currentUser.id)) {
+                if (isAtBottom) {
+                    setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+                    markAsRead(); // Cập nhật mốc thời gian đã xem ngay lập tức
+                } else {
+                    setUnreadInChat(prev => prev + 1);
+                    setShowScrollButton(true);
+                }
+            } else {
+                // Nếu mình là người gửi, luôn cuộn xuống
+                setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+                markAsRead();
+            }
         }
       }).subscribe();
+
     return () => { supabase.removeChannel(channel); };
-  }, [groupTag]);
+  }, [groupTag, currentUser.id]);
 
-  useEffect(() => { messagesEndRef.current?.scrollIntoView(); }, []);
-
+  // --- 4. XỬ LÝ CUỘN (SCROLL) ---
   const handleScroll = () => {
       const container = scrollContainerRef.current;
       if (!container) return;
-      if (container.scrollHeight - container.scrollTop <= container.clientHeight + 50) { setShowScrollButton(false); setUnreadInChat(0); markAsRead(); }
+      if (container.scrollHeight - container.scrollTop <= container.clientHeight + 50) { 
+          if (unreadInChat > 0) {
+              setShowScrollButton(false); 
+              setUnreadInChat(0); 
+              markAsRead(); 
+          }
+      }
   };
 
-  const scrollToBottom = () => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); setShowScrollButton(false); setUnreadInChat(0); markAsRead(); };
+  const scrollToBottom = () => { 
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); 
+      setShowScrollButton(false); 
+      setUnreadInChat(0); 
+      markAsRead(); 
+  };
 
-  // --- [SỬA ĐỔI QUAN TRỌNG] ---
+  // --- 5. GỬI TIN NHẮN ---
   const handleSendMessage = async () => {
     if ((!newMessage.trim() && !file) || isSending) return;
     setIsSending(true);
@@ -156,57 +170,93 @@ export default function ChatGroup({ currentUser, groupTag, onBack, onLeaveGroup 
         const fileExt = file.name.split('.').pop();
         const fileName = `${groupTag}/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
         const { error } = await supabase.storage.from('chat-media').upload(fileName, file);
-        if (!error) imageUrl = supabase.storage.from('chat-media').getPublicUrl(fileName).data.publicUrl;
+        if (!error) {
+            imageUrl = supabase.storage.from('chat-media').getPublicUrl(fileName).data.publicUrl;
+        }
       }
       
-      // 1. LẤY AVATAR TỪ URL NẾU CÓ, NẾU KHÔNG DÙNG SHORTNAME
       const userAvatar = currentUser.avatar_url || currentUser.shortName || currentUser.name?.charAt(0) || '?';
 
-      await supabase.from('messages').insert({ 
+      const { error } = await supabase.from('messages').insert({ 
           group_tag: groupTag, 
-          sender_id: currentUser.id, 
+          sender_id: String(currentUser.id), // Đảm bảo là string
           sender_name: currentUser.name, 
-          sender_avatar: userAvatar, // <-- Dùng biến này
+          sender_avatar: userAvatar, 
           content: newMessage || "", 
           image_url: imageUrl 
       });
 
-      setNewMessage(""); setFile(null); setTimeout(scrollToBottom, 100); markAsRead();
-    } catch (e) { console.error(e); } finally { setIsSending(false); }
+      if (!error) {
+          setNewMessage(""); 
+          setFile(null); 
+          markAsRead();
+      }
+    } catch (e) { 
+        console.error(e); 
+    } finally { 
+        setIsSending(false); 
+    }
+  };
+
+  // --- 6. CẬP NHẬT THÔNG TIN NHÓM ---
+  const handleUpdateGroupInfo = async () => {
+    setIsSavingGroup(true);
+    try {
+        let newAvatarUrl = groupAvatar;
+        if (editFile) {
+            const fileExt = editFile.name.split('.').pop();
+            const fileName = `${groupTag}_${Date.now()}.${fileExt}`;
+            const { error: uploadError } = await supabase.storage.from('group-avatars').upload(fileName, editFile, { upsert: true });
+            if (!uploadError) {
+                const { data } = supabase.storage.from('group-avatars').getPublicUrl(fileName);
+                newAvatarUrl = data.publicUrl;
+            }
+        }
+        const { error } = await supabase.from('chat_groups').upsert({
+            tag: groupTag,
+            name: editName,
+            avatar_url: newAvatarUrl
+        });
+        if (!error) {
+            setGroupName(editName);
+            setGroupAvatar(newAvatarUrl);
+            setIsEditingGroup(false);
+            setEditFile(null);
+        }
+    } catch (error) {
+        console.error(error);
+    } finally {
+        setIsSavingGroup(false);
+    }
   };
 
   return (
     <div className="flex h-full relative overflow-hidden bg-[#111]">
-      
       {/* MODAL CHỈNH SỬA NHÓM */}
       {isEditingGroup && (
           <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
               <div className="bg-[#1a1a1a] border border-[#333] w-full max-w-xs rounded-2xl p-5 shadow-2xl animate-in zoom-in-95">
-                  <h3 className="text-[#d4af37] font-bold text-center mb-4 uppercase text-xs tracking-widest">Cập nhật thông tin nhóm</h3>
-                  
+                  <h3 className="text-[#d4af37] font-bold text-center mb-4 uppercase text-xs tracking-widest">Cập nhật nhóm</h3>
                   <div className="flex justify-center mb-4 relative">
                       <div className="w-20 h-20 rounded-full border-2 border-[#d4af37] overflow-hidden bg-[#222] relative group">
-                          <img src={editFile ? URL.createObjectURL(editFile) : (groupAvatar || `https://placehold.co/100x100/222/d4af37?text=${groupTag.substring(0,2).toUpperCase()}`)} className="w-full h-full object-cover" />
+                          <img 
+                            src={editFile ? URL.createObjectURL(editFile) : (groupAvatar || `https://api.dicebear.com/7.x/identicon/svg?seed=${groupTag}`)} 
+                            className="w-full h-full object-cover" 
+                            alt="Group"
+                          />
                           <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer" onClick={() => groupAvatarInputRef.current?.click()}>
                               <Camera size={24} className="text-white"/>
                           </div>
                       </div>
                       <input type="file" ref={groupAvatarInputRef} hidden accept="image/*" onChange={(e) => e.target.files && setEditFile(e.target.files[0])}/>
                   </div>
-
                   <div className="space-y-1 mb-4">
                       <label className="text-[10px] text-gray-500 font-bold uppercase">Tên nhóm</label>
-                      <input 
-                        value={editName}
-                        onChange={(e) => setEditName(e.target.value)}
-                        className="w-full bg-[#111] border border-[#333] rounded-lg p-2 text-sm text-white focus:border-[#d4af37] focus:outline-none"
-                        placeholder="Đặt tên nhóm..."
-                      />
+                      <input value={editName} onChange={(e) => setEditName(e.target.value)} className="w-full bg-[#111] border border-[#333] rounded-lg p-2 text-sm text-white focus:border-[#d4af37] focus:outline-none"/>
                   </div>
-
                   <div className="flex gap-2">
-                      <button onClick={() => { setIsEditingGroup(false); setEditFile(null); }} className="flex-1 py-2 bg-[#222] text-gray-400 rounded-lg text-xs font-bold hover:bg-[#333]">Hủy</button>
-                      <button onClick={handleUpdateGroupInfo} disabled={isSavingGroup} className="flex-1 py-2 bg-[#d4af37] text-black rounded-lg text-xs font-bold hover:bg-[#b89628] flex items-center justify-center gap-1">
+                      <button onClick={() => setIsEditingGroup(false)} className="flex-1 py-2 bg-[#222] text-gray-400 rounded-lg text-xs font-bold">Hủy</button>
+                      <button onClick={handleUpdateGroupInfo} disabled={isSavingGroup} className="flex-1 py-2 bg-[#d4af37] text-black rounded-lg text-xs font-bold flex items-center justify-center gap-1">
                           {isSavingGroup ? <Loader2 className="animate-spin" size={14}/> : <Save size={14}/>} Lưu
                       </button>
                   </div>
@@ -223,7 +273,7 @@ export default function ChatGroup({ currentUser, groupTag, onBack, onLeaveGroup 
                 </button>
                 <div className="flex items-center gap-2 overflow-hidden">
                     <div className="w-8 h-8 rounded-full border border-[#333] bg-[#222] overflow-hidden flex-shrink-0">
-                        {groupAvatar ? <img src={groupAvatar} className="w-full h-full object-cover"/> : <div className="w-full h-full flex items-center justify-center text-[10px] text-gray-500 font-bold">{groupTag.substring(0,2).toUpperCase()}</div>}
+                        {groupAvatar ? <img src={groupAvatar} className="w-full h-full object-cover" alt="Group"/> : <div className="w-full h-full flex items-center justify-center text-[10px] text-gray-500 font-bold">{groupTag.substring(0,2).toUpperCase()}</div>}
                     </div>
                     <div className="min-w-0">
                         <h3 className="font-bold text-[#d4af37] text-sm truncate">{groupName}</h3>
@@ -233,66 +283,54 @@ export default function ChatGroup({ currentUser, groupTag, onBack, onLeaveGroup 
                     </div>
                 </div>
             </div>
-            
             <div className="flex gap-1">
-                <button onClick={() => setIsEditingGroup(true)} className="p-2 rounded-full text-gray-400 hover:text-[#d4af37] hover:bg-[#333] transition-colors">
-                    <Edit3 size={18} />
-                </button>
-                <button onClick={() => setShowInfo(!showInfo)} className={`p-2 rounded-full transition-colors ${showInfo ? 'text-[#d4af37] bg-[#333]' : 'text-gray-400 hover:text-white'}`}>
-                    <Info size={20} />
-                </button>
+                <button onClick={() => setIsEditingGroup(true)} className="p-2 rounded-full text-gray-400 hover:text-[#d4af37] hover:bg-[#333] transition-colors"><Edit3 size={18} /></button>
+                <button onClick={() => setShowInfo(!showInfo)} className={`p-2 rounded-full transition-colors ${showInfo ? 'text-[#d4af37] bg-[#333]' : 'text-gray-400 hover:text-white'}`}><Info size={20} /></button>
             </div>
         </div>
 
-        {/* LIST TIN NHẮN */}
+        {/* MESSAGES LIST */}
         <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-hide bg-[#111] relative">
           {messages.map((msg, index) => {
-            const isMe = msg.sender_id === currentUser.id;
-            const isHost = msg.sender_name.includes("(Chủ tiệc)") || msg.sender_name.includes("Admin");
+            const isMe = String(msg.sender_id) === String(currentUser.id);
+            const isHost = msg.sender_name?.includes("(Chủ tiệc)") || msg.sender_name?.includes("Admin");
             return (
               <div key={msg.id || index} className={`flex gap-3 ${isMe ? "flex-row-reverse" : ""}`}>
                 <div className="flex flex-col items-center gap-1">
-                    {/* 2. HIỂN THỊ AVATAR LÀ ẢNH NẾU CÓ URL */}
                     <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold border overflow-hidden ${isHost ? "bg-black border-[#d4af37] text-[#d4af37]" : "bg-[#333] border-[#444] text-white"}`}>
-                        {isHost ? (
-                            <Crown size={12} fill="#d4af37" />
-                        ) : msg.sender_avatar && msg.sender_avatar.startsWith("http") ? (
-                            <img src={msg.sender_avatar} className="w-full h-full object-cover" alt="avt"/>
-                        ) : (
-                            msg.sender_avatar
-                        )}
+                        {isHost ? <Crown size={12} fill="#d4af37" /> : msg.sender_avatar && msg.sender_avatar.startsWith("http") ? <img src={msg.sender_avatar} className="w-full h-full object-cover" alt="avt"/> : <span className="uppercase">{msg.sender_avatar || msg.sender_name?.charAt(0) || '?'}</span>}
                     </div>
                 </div>
                 <div className={`max-w-[75%] space-y-1 ${isMe ? "items-end flex flex-col" : "items-start flex flex-col"}`}>
-                   {!isMe && <span className="text-[10px] text-gray-500 ml-1">{msg.sender_name}</span>}
-                   <div className={`p-3 rounded-2xl text-sm shadow-sm ${isMe ? "bg-[#d4af37] text-black rounded-tr-none" : "bg-[#222] text-gray-200 rounded-tl-none border border-[#333]"}`}>
-                      {msg.image_url && (
-                          <div className="mb-2 rounded-lg overflow-hidden cursor-pointer border border-black/10 group relative" onClick={() => setPreviewImage(msg.image_url!)}>
-                              <img src={msg.image_url} className="max-w-full h-auto object-cover max-h-60" loading="lazy" />
-                          </div>
-                      )}
-                      {msg.content && <p className="whitespace-pre-wrap leading-relaxed break-words">{msg.content}</p>}
-                   </div>
-                   <span className="text-[9px] text-gray-600 px-1 select-none">{new Date(msg.created_at).toLocaleTimeString('vi-VN', {hour: '2-digit', minute:'2-digit'})}</span>
+                    {!isMe && <span className="text-[10px] text-gray-500 ml-1">{msg.sender_name}</span>}
+                    <div className={`p-3 rounded-2xl text-sm shadow-sm ${isMe ? "bg-[#d4af37] text-black rounded-tr-none" : "bg-[#222] text-gray-200 rounded-tl-none border border-[#333]"}`}>
+                       {msg.image_url && (
+                           <div className="mb-2 rounded-lg overflow-hidden cursor-pointer border border-black/10 group relative" onClick={() => setPreviewImage(msg.image_url!)}>
+                               <img src={msg.image_url} className="max-w-full h-auto object-cover max-h-60" loading="lazy" alt="shared"/>
+                           </div>
+                       )}
+                       {msg.content && <p className="whitespace-pre-wrap leading-relaxed break-words">{msg.content}</p>}
+                    </div>
+                    <span className="text-[9px] text-gray-600 px-1 select-none">{new Date(msg.created_at).toLocaleTimeString('vi-VN', {hour: '2-digit', minute:'2-digit'})}</span>
                 </div>
               </div>
             );
           })}
           <div ref={messagesEndRef} />
-          {showScrollButton && unreadInChat > 0 && (
+          {showScrollButton && (
               <div className="sticky bottom-2 left-0 right-0 flex justify-center z-10 animate-in slide-in-from-bottom-2 fade-in">
-                  <button onClick={scrollToBottom} className="bg-[#d4af37] text-black px-4 py-2 rounded-full text-xs font-bold shadow-lg flex items-center gap-2 hover:bg-[#b89628] transition-transform active:scale-95">
-                      <ArrowDown size={14} /> Tin nhắn mới ({unreadInChat})
+                  <button onClick={scrollToBottom} className="bg-[#d4af37] text-black px-4 py-2 rounded-full text-xs font-bold shadow-lg flex items-center gap-2 transition-transform active:scale-95">
+                      <ArrowDown size={14} /> {unreadInChat > 0 ? `Tin nhắn mới (${unreadInChat})` : "Cuộn xuống"}
                   </button>
               </div>
           )}
         </div>
 
-        {/* INPUT */}
+        {/* INPUT SECTION */}
         <div className="p-3 bg-[#1a1a1a] border-t border-[#333]">
           {file && (
               <div className="flex items-center gap-3 mb-3 bg-[#111] p-2 rounded-lg border border-[#333] w-fit shadow-lg animate-in slide-in-from-bottom-2">
-                  <div className="w-12 h-12 relative rounded overflow-hidden border border-[#333]"><img src={URL.createObjectURL(file)} className="w-full h-full object-cover" /></div>
+                  <div className="w-12 h-12 relative rounded overflow-hidden border border-[#333]"><img src={URL.createObjectURL(file)} className="w-full h-full object-cover" alt="preview"/></div>
                   <button onClick={() => setFile(null)} className="p-1.5 hover:bg-[#333] rounded-full text-gray-400 hover:text-red-400 transition-colors"><X size={14}/></button>
               </div>
           )}
@@ -311,38 +349,30 @@ export default function ChatGroup({ currentUser, groupTag, onBack, onLeaveGroup 
 
       {/* SIDEBAR */}
       <div className={`absolute top-0 right-0 h-full w-72 bg-[#1a1a1a] border-l border-[#333] transform transition-transform duration-300 z-30 shadow-2xl ${showInfo ? "translate-x-0" : "translate-x-full"}`}>
-          <ChatInfoSidebar 
-            groupTag={groupTag} 
-            currentUser={currentUser} 
-            onClose={() => setShowInfo(false)} 
-            messages={messages}
-            onLeave={onLeaveGroup}
-          />
+          <ChatInfoSidebar groupTag={groupTag} currentUser={currentUser} onClose={() => setShowInfo(false)} messages={messages} onLeave={onLeaveGroup}/>
       </div>
+
+      {/* PREVIEW IMAGE */}
       {previewImage && (
-          <div className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setPreviewImage(null)}>
+          <div className="fixed inset-0 z-[60] bg-black/95 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setPreviewImage(null)}>
               <button className="absolute top-4 right-4 p-3 bg-white/10 rounded-full text-white hover:bg-white/20 transition-colors z-50"><X size={24}/></button>
-              <img src={previewImage} className="max-w-full max-h-full rounded-lg shadow-2xl object-contain cursor-zoom-out" />
+              <img src={previewImage} className="max-w-full max-h-full rounded-lg shadow-2xl object-contain cursor-zoom-out" alt="Preview"/>
           </div>
       )}
     </div>
   );
 }
 
-// --- SIDEBAR CẬP NHẬT ---
 function ChatInfoSidebar({ groupTag, currentUser, onClose, messages, onLeave }: any) {
     const [activeTab, setActiveTab] = useState<'members' | 'media'>('members');
     const [members, setMembers] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
-    
-    // State cho tính năng ADD MEMBER
     const [isAdding, setIsAdding] = useState(false);
     const [candidates, setCandidates] = useState<any[]>([]);
     const [loadingCandidates, setLoadingCandidates] = useState(false);
 
     const mediaList = messages.filter((m: any) => m.image_url);
 
-    // Fetch members
     useEffect(() => {
         if (activeTab === 'members') {
             const fetchMembers = async () => {
@@ -355,30 +385,18 @@ function ChatInfoSidebar({ groupTag, currentUser, onClose, messages, onLeave }: 
             };
             fetchMembers();
         }
-    }, [activeTab, groupTag, isAdding]); // Reload khi isAdding tắt
+    }, [activeTab, groupTag, isAdding]);
 
-    // --- HÀM LẤY DANH SÁCH MỜI (CẬP NHẬT LOGIC LỌC TAG) ---
     const fetchCandidates = async () => {
         setLoadingCandidates(true);
-        // 1. Lấy tất cả guests kèm tags
         const { data: allGuests } = await supabase.from('guests').select('id, name, tags');
-        
-        // 2. Lấy ID những người đang trong nhóm
-        const currentMemberIds = members.map(m => m.id);
-        
-        // 3. Lấy Tags của user hiện tại
+        const currentMemberIds = members.map(m => String(m.id));
         const userTags = currentUser.tags || [];
 
-        // 4. Lọc
         const available = allGuests?.filter((g: any) => {
-            // Loại bỏ những người đã ở trong nhóm hoặc là chính mình
-            if (currentMemberIds.includes(g.id) || g.id === currentUser.id) return false;
-
-            // Kiểm tra "Cùng Tag": Người được mời phải có ít nhất 1 tag trùng với người mời
+            if (currentMemberIds.includes(String(g.id)) || String(g.id) === String(currentUser.id)) return false;
             const candidateTags = g.tags || [];
-            const hasCommonTag = userTags.some((t: string) => candidateTags.includes(t));
-
-            return hasCommonTag;
+            return userTags.some((t: string) => candidateTags.includes(t));
         }) || [];
 
         setCandidates(available);
@@ -387,23 +405,18 @@ function ChatInfoSidebar({ groupTag, currentUser, onClose, messages, onLeave }: 
 
     const handleAddMember = async (guestId: string) => {
         try {
-            await supabase.from('group_members').insert({
-                group_tag: groupTag,
-                guest_id: guestId
-            });
-            // Update UI
+            await supabase.from('group_members').insert({ group_tag: groupTag, guest_id: String(guestId) });
             setCandidates(prev => prev.filter(c => c.id !== guestId));
-            alert("Đã thêm thành viên thành công!");
+            alert("Đã thêm thành viên!");
         } catch (error) {
-            console.error(error);
             alert("Lỗi khi thêm thành viên.");
         }
     };
 
     const handleLeaveGroup = async () => {
-        if (confirm("Bạn có chắc chắn muốn rời khỏi nhóm này không?")) {
+        if (confirm("Bạn có muốn rời nhóm này?")) {
             try {
-                await supabase.from('group_members').delete().match({ group_tag: groupTag, guest_id: currentUser.id });
+                await supabase.from('group_members').delete().match({ group_tag: groupTag, guest_id: String(currentUser.id) });
                 if (onLeave) onLeave();
             } catch (error) {
                 alert("Lỗi khi rời nhóm");
@@ -418,59 +431,56 @@ function ChatInfoSidebar({ groupTag, currentUser, onClose, messages, onLeave }: 
                 <button onClick={onClose} className="p-1 hover:bg-[#333] rounded transition-colors"><X size={18} className="text-gray-400 hover:text-white"/></button>
             </div>
             
-            {/* TABS */}
             <div className="flex border-b border-[#333] bg-[#222]">
                 <button onClick={() => setActiveTab('members')} className={`flex-1 py-3 text-xs font-bold flex items-center justify-center gap-1 transition-colors ${activeTab === 'members' ? 'text-[#d4af37] border-b-2 border-[#d4af37]' : 'text-gray-500 hover:text-white'}`}><Users size={14} /> Thành viên</button>
                 <button onClick={() => setActiveTab('media')} className={`flex-1 py-3 text-xs font-bold flex items-center justify-center gap-1 transition-colors ${activeTab === 'media' ? 'text-[#d4af37] border-b-2 border-[#d4af37]' : 'text-gray-500 hover:text-white'}`}><Grid size={14} /> Media ({mediaList.length})</button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4 bg-[#1a1a1a] relative">
+            <div className="flex-1 overflow-y-auto p-4 bg-[#1a1a1a]">
                 {activeTab === 'members' ? (
                     <>
-                        {/* NÚT TÍNH NĂNG */}
                         <div className="flex gap-2 mb-4">
-                             {/* Nút THÊM THÀNH VIÊN */}
-                            <button 
-                                onClick={() => { setIsAdding(!isAdding); if (!isAdding) fetchCandidates(); }}
-                                className={`flex-1 py-2 rounded-lg border text-xs font-bold flex items-center justify-center gap-2 transition-all ${isAdding ? 'bg-[#333] border-[#555] text-white' : 'bg-[#d4af37]/10 border-[#d4af37]/30 text-[#d4af37] hover:bg-[#d4af37]/20'}`}
-                            >
+                            <button onClick={() => { setIsAdding(!isAdding); if (!isAdding) fetchCandidates(); }} className={`flex-1 py-2 rounded-lg border text-xs font-bold flex items-center justify-center gap-2 transition-all ${isAdding ? 'bg-[#333] border-[#555] text-white' : 'bg-[#d4af37]/10 border-[#d4af37]/30 text-[#d4af37] hover:bg-[#d4af37]/20'}`}>
                                 {isAdding ? <X size={14}/> : <UserPlus size={14}/>} {isAdding ? "Hủy" : "Thêm người"}
                             </button>
-                            
-                             {/* Nút RỜI NHÓM (Chỉ hiện nếu không phải nhóm General) */}
                             {groupTag !== 'general' && (
-                                <button onClick={handleLeaveGroup} className="px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30 text-red-500 hover:bg-red-500/20 text-xs font-bold">
-                                    <LogOut size={14}/>
-                                </button>
+                                <button onClick={handleLeaveGroup} className="px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30 text-red-500 hover:bg-red-500/20 text-xs font-bold"><LogOut size={14}/></button>
                             )}
                         </div>
-
-                        {/* LIST ADD MEMBER */}
                         {isAdding && (
                             <div className="mb-4 p-3 bg-[#111] rounded-xl border border-[#333] animate-in zoom-in-95">
-                                <p className="text-[10px] uppercase font-bold text-gray-500 mb-2">Người quen (Cùng nhóm):</p>
-                                <div className="max-h-40 overflow-y-auto space-y-1 pr-1 custom-scrollbar">
-                                    {loadingCandidates ? <Loader2 className="animate-spin mx-auto text-gray-500" size={16}/> : candidates.length === 0 ? <p className="text-center text-xs text-gray-500">Không tìm thấy ai phù hợp.</p> : 
+                                <p className="text-[10px] uppercase font-bold text-gray-500 mb-2">Người quen cùng nhóm:</p>
+                                <div className="max-h-40 overflow-y-auto space-y-1">
+                                    {loadingCandidates ? <Loader2 className="animate-spin mx-auto text-gray-500" size={16}/> : candidates.length === 0 ? <p className="text-center text-xs text-gray-500">Không có ai.</p> : 
                                         candidates.map(c => (
                                             <div key={c.id} className="flex items-center justify-between p-2 hover:bg-[#222] rounded-lg cursor-pointer group" onClick={() => handleAddMember(c.id)}>
                                                 <span className="text-xs text-gray-300">{c.name}</span>
-                                                <div className="w-5 h-5 bg-[#d4af37] text-black rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><UserPlus size={10}/></div>
+                                                <UserPlus size={14} className="text-[#d4af37] opacity-0 group-hover:opacity-100 transition-opacity"/>
                                             </div>
                                         ))
                                     }
                                 </div>
                             </div>
                         )}
-
-                        {/* LIST MEMBERS */}
                         <div className="space-y-3">
                             {loading ? <div className="text-center text-xs text-gray-500">Đang tải...</div> : members.map((mem, idx) => (
-                                <div key={idx} className="flex items-center gap-3 p-2 hover:bg-[#222] rounded-lg transition-colors"><div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shadow-sm ${mem.isAdmin ? 'bg-[#d4af37] text-black' : 'bg-[#333] text-gray-300'}`}>{mem.name.charAt(0)}</div><div className="flex-1 min-w-0"><p className={`text-xs truncate font-medium ${mem.isAdmin ? 'text-[#d4af37]' : 'text-gray-200'}`}>{mem.name}</p>{mem.isAdmin && <p className="text-[9px] text-gray-500 mt-0.5">Quản trị viên</p>}</div>{mem.isAdmin && <Crown size={14} className="text-[#d4af37]" />}</div>
+                                <div key={idx} className="flex items-center gap-3 p-2 hover:bg-[#222] rounded-lg transition-colors">
+                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shadow-sm ${mem.isAdmin ? 'bg-[#d4af37] text-black' : 'bg-[#333] text-gray-300'}`}>{mem.name.charAt(0)}</div>
+                                    <div className="flex-1 min-w-0">
+                                        <p className={`text-xs truncate font-medium ${mem.isAdmin ? 'text-[#d4af37]' : 'text-gray-200'}`}>{mem.name}</p>
+                                        {mem.isAdmin && <p className="text-[9px] text-gray-500">Quản trị viên</p>}
+                                    </div>
+                                    {mem.isAdmin && <Crown size={14} className="text-[#d4af37]" />}
+                                </div>
                             ))}
                         </div>
                     </>
                 ) : (
-                    <div className="grid grid-cols-3 gap-2">{mediaList.length === 0 ? <div className="col-span-3 text-center text-gray-500 text-xs py-10">Chưa có ảnh nào</div> : mediaList.map((m: any) => (<div key={m.id} className="aspect-square bg-[#222] rounded-lg overflow-hidden border border-[#333] cursor-pointer" onClick={() => (window as any).open(m.image_url, '_blank')}><img src={m.image_url} className="w-full h-full object-cover"/></div>))}</div>
+                    <div className="grid grid-cols-3 gap-2">
+                        {mediaList.length === 0 ? <div className="col-span-3 text-center text-gray-500 text-xs py-10">Chưa có ảnh nào</div> : 
+                            mediaList.map((m: any) => (<div key={m.id} className="aspect-square bg-[#222] rounded-lg overflow-hidden border border-[#333] cursor-pointer" onClick={() => window.open(m.image_url, '_blank')}><img src={m.image_url} className="w-full h-full object-cover" alt="media"/></div>))
+                        }
+                    </div>
                 )}
             </div>
         </div>

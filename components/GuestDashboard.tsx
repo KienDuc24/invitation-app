@@ -7,7 +7,7 @@ import { supabase } from "@/lib/supabase";
 import { 
   ArrowLeft, HeartHandshake, ImagePlus, 
   Loader2, Send, Ticket, UserPlus, Users, Camera, Bell, BellRing,
-  Crown, Volume2
+  Crown
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
@@ -19,7 +19,13 @@ const HOST_INFO = {
   isHost: true
 };
 
-// (Đã xóa NOTI_SOUND_URL vì chúng ta dùng code để tạo âm thanh trực tiếp)
+// Map tên nhóm để hiển thị trên thông báo cho đẹp
+const GROUP_NAMES: Record<string, string> = {
+    'general': 'Hội trường chính',
+    'family': 'Gia đình',
+    'friends': 'Hội bạn thân',
+    'vip': 'Khách VIP'
+};
 
 interface DashboardProps {
   guest: any;
@@ -34,7 +40,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [notification, setNotification] = useState<{ visible: boolean, title: string, content: string, avatar: string, groupTag?: string } | null>(null);
   
-  // --- HỆ THỐNG ÂM THANH MỚI (WEB AUDIO API) ---
+  // --- HỆ THỐNG ÂM THANH (WEB AUDIO API) ---
   const audioContextRef = useRef<AudioContext | null>(null);
   const [hasPermission, setHasPermission] = useState(false);
 
@@ -54,7 +60,6 @@ export default function GuestDashboard({ guest }: DashboardProps) {
 
   // --- 1. KHỞI TẠO AUDIO CONTEXT ---
   useEffect(() => {
-      // Khởi tạo AudioContext (Bộ máy âm thanh của trình duyệt)
       const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
       if (AudioContext) {
           audioContextRef.current = new AudioContext();
@@ -65,16 +70,12 @@ export default function GuestDashboard({ guest }: DashboardProps) {
       }
   }, []);
 
-  // --- 2. HÀM TỰ SINH ÂM THANH "BUBBLE POP" (Không cần file mp3) ---
+  // --- 2. HÀM TỰ SINH ÂM THANH "BUBBLE POP" ---
   const playSystemSound = () => {
       try {
           const ctx = audioContextRef.current;
           if (!ctx) return;
-
-          // Nếu Audio đang bị tạm dừng (do chưa tương tác), mở lại
-          if (ctx.state === 'suspended') {
-              ctx.resume();
-          }
+          if (ctx.state === 'suspended') ctx.resume();
 
           const oscillator = ctx.createOscillator();
           const gainNode = ctx.createGain();
@@ -82,7 +83,6 @@ export default function GuestDashboard({ guest }: DashboardProps) {
           oscillator.connect(gainNode);
           gainNode.connect(ctx.destination);
 
-          // Cấu hình tiếng "Pop"
           oscillator.type = 'sine'; 
           const now = ctx.currentTime;
           
@@ -95,70 +95,82 @@ export default function GuestDashboard({ guest }: DashboardProps) {
           oscillator.start(now);
           oscillator.stop(now + 0.1);
       } catch (e) {
-          console.error("Lỗi tạo âm thanh:", e);
+          console.error("Audio Error:", e);
       }
   };
 
-  // --- 3. MỞ KHÓA ÂM THANH (BẮT BUỘC KHI USER CHẠM VÀO MÀN HÌNH) ---
+  // --- 3. MỞ KHÓA ÂM THANH ---
   const unlockAudio = () => {
       if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
           audioContextRef.current.resume().then(() => {
-              console.log("🔊 Audio Context đã được mở khóa!");
+              console.log("🔊 Audio system unlocked!");
           });
       }
   };
 
+  // --- 4. CẬP NHẬT TRẠNG THÁI "ĐÃ XEM" ---
+  const markGroupAsRead = async (tag: string) => {
+    try {
+        await supabase
+          .from('group_members')
+          .update({ last_viewed_at: new Date().toISOString() })
+          .eq('guest_id', guest.id)
+          .eq('group_tag', tag);
+        
+        // Xóa tag khỏi danh sách chưa đọc ở Client ngay lập tức
+        setUnreadGroupTags(prev => prev.filter(t => t !== tag));
+        fetchUnreadMessages();
+    } catch (e) {
+        console.error("Lỗi cập nhật đã xem:", e);
+    }
+  };
+
   const requestPermission = async () => {
       unlockAudio(); 
-      playSystemSound(); // Test tiếng ngay lập tức
-
+      playSystemSound();
       if ("Notification" in window) {
           const permission = await Notification.requestPermission();
           setHasPermission(permission === "granted");
           if (permission === "granted") {
-              triggerNotification({
-                  sender_name: "Hệ thống",
-                  content: "Đã bật thông báo thành công!",
-                  avatar_url: null
+              new Notification("Đã bật thông báo!", { 
+                  body: "Bạn sẽ nhận được tin nhắn ngay lập tức.",
+                  icon: getDisplayAvatar() || "/favicon.ico"
               });
           }
       }
   };
 
-  // --- 4. HÀM KÍCH HOẠT THÔNG BÁO ---
+  // --- 5. HÀM KÍCH HOẠT THÔNG BÁO (HIỆN NHÓM VÀ NGƯỜI GỬI) ---
   const triggerNotification = (msg: any) => {
-      console.log("🔔 Có tin nhắn mới:", msg);
-
-      // A. Phát tiếng (Code-generated)
       playSystemSound();
 
-      // B. Hiện Popup trong App
+      const groupName = GROUP_NAMES[msg.group_tag] || `Nhóm ${msg.group_tag}`;
+      const notiTitle = `Tin nhắn từ ${groupName}`;
+      const notiContent = `${msg.sender_name}: ${msg.content || "Đã gửi một ảnh"}`;
+
       setNotification({
           visible: true,
-          title: msg.sender_name || "Tin nhắn mới",
-          content: msg.content || "Đã gửi tin nhắn",
+          title: notiTitle,
+          content: notiContent,
           avatar: msg.sender_avatar,
           groupTag: msg.group_tag 
       });
       setTimeout(() => setNotification(null), 4000);
 
-      // C. Hiện Noti Trình Duyệt (Khi ẩn tab)
       const shouldNotifyBrowser = document.hidden || ("Notification" in window && Notification.permission === "granted");
-      
       if (shouldNotifyBrowser) {
           try {
-             const noti = new Notification(`Tin mới từ ${msg.sender_name}`, {
-                 body: msg.content || "Nhấn để xem ngay",
+             const noti = new Notification(notiTitle, {
+                 body: notiContent,
                  icon: msg.sender_avatar && msg.sender_avatar.startsWith('http') ? msg.sender_avatar : undefined,
-                 tag: 'chat-message',
-                 silent: false // Tắt âm mặc định của trình duyệt để dùng âm của mình
+                 tag: 'chat-message'
              });
-             
              noti.onclick = function() {
                  window.focus();
                  if (msg.group_tag) {
                      setActiveChatTag(msg.group_tag);
                      setActiveTab('chat');
+                     markGroupAsRead(msg.group_tag);
                  }
                  noti.close();
              };
@@ -166,25 +178,47 @@ export default function GuestDashboard({ guest }: DashboardProps) {
       }
   };
 
-  const handleTestNotification = () => {
-      triggerNotification({
-          sender_name: "Test Hệ Thống",
-          content: "Âm thanh Web Audio API hoạt động tốt!",
-          sender_avatar: null,
-          group_tag: null
-      });
-  };
-
-  // --- CÁC HÀM LOGIC CŨ GIỮ NGUYÊN ---
   const getDisplayAvatar = () => { if (avatarUrl) return avatarUrl; return `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(guest.name)}&backgroundColor=d4af37,111111`; };
   
-  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => { if (!e.target.files || e.target.files.length === 0) return; const file = e.target.files[0]; setIsUploadingAvatar(true); try { const fileExt = file.name.split('.').pop(); const fileName = `${guest.id}_${Date.now()}.${fileExt}`; const { error: uploadError } = await supabase.storage.from('guest-avatars').upload(fileName, file, { upsert: true }); if (uploadError) throw uploadError; const { data: { publicUrl } } = supabase.storage.from('guest-avatars').getPublicUrl(fileName); const { error: dbError } = await supabase.from('guests').update({ avatar_url: publicUrl }).eq('id', guest.id); if (dbError) throw dbError; setAvatarUrl(publicUrl); guest.avatar_url = publicUrl; } catch (error) { console.error("Lỗi đổi avatar:", error); alert("Lỗi tải ảnh."); } finally { setIsUploadingAvatar(false); } };
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => { if (!e.target.files || e.target.files.length === 0) return; const file = e.target.files[0]; setIsUploadingAvatar(true); try { const fileExt = file.name.split('.').pop(); const fileName = `${guest.id}_${Date.now()}.${fileExt}`; const { error: uploadError } = await supabase.storage.from('guest-avatars').upload(fileName, file, { upsert: true }); if (uploadError) throw uploadError; const { data: { publicUrl } } = supabase.storage.from('guest-avatars').getPublicUrl(fileName); const { error: dbError } = await supabase.from('guests').update({ avatar_url: publicUrl }).eq('id', guest.id); if (dbError) throw dbError; setAvatarUrl(publicUrl); guest.avatar_url = publicUrl; } catch (error) { console.error("Lỗi đổi avatar:", error); } finally { setIsUploadingAvatar(false); } };
 
   // Logic Nhóm
-  useEffect(() => { const initGroups = async () => { const { data: dbGroups } = await supabase.from('group_members').select('group_tag').eq('guest_id', guest.id); let currentTags = dbGroups ? dbGroups.map((item: any) => item.group_tag) : []; if (!currentTags.includes('general')) { await supabase.from('group_members').insert({ group_tag: 'general', guest_id: guest.id }); currentTags.push('general'); } setJoinedGroups(currentTags); }; initGroups(); }, [guest.id]);
-  useEffect(() => { if (activeChatTag) { setUnreadGroupTags(prev => prev.filter(tag => tag !== activeChatTag)); } }, [activeChatTag]);
+  useEffect(() => { const initGroups = async () => { const { data: dbGroups } = await supabase.from('group_members').select('group_tag').eq('guest_id', guest.id); let currentTags = dbGroups ? dbGroups.map((item: any) => item.group_tag) : []; if (!currentTags.includes('general')) { await supabase.from('group_members').insert({ group_tag: 'general', guest_id: guest.id }).then(({ error }) => { if (!error || error.code === '23505') currentTags.push('general'); }); } setJoinedGroups(currentTags); }; initGroups(); }, [guest.id]);
   
-  const fetchUnreadMessages = async () => { if (joinedGroups.length === 0) { setUnreadCount(0); return; } try { const { data: membersData } = await supabase.from('group_members').select('group_tag, last_viewed_at').eq('guest_id', guest.id).in('group_tag', joinedGroups); if (!membersData) return; const counts = await Promise.all(membersData.map(async (mem) => { const lastViewed = mem.last_viewed_at || '2000-01-01T00:00:00.000Z'; const { count } = await supabase.from('messages').select('*', { count: 'exact', head: true }).eq('group_tag', mem.group_tag).gt('created_at', lastViewed); if (count && count > 0) { setUnreadGroupTags(prev => prev.includes(mem.group_tag) ? prev : [...prev, mem.group_tag]); } return count || 0; })); setUnreadCount(counts.reduce((acc, curr) => acc + curr, 0)); } catch (error) { console.error(error); } };
+  useEffect(() => { if (activeChatTag) { markGroupAsRead(activeChatTag); } }, [activeChatTag]);
+  
+  const fetchUnreadMessages = async () => {
+  if (joinedGroups.length === 0) { setUnreadCount(0); return; }
+  try {
+    const { data: membersData } = await supabase
+      .from('group_members')
+      .select('group_tag, last_viewed_at')
+      .eq('guest_id', guest.id)
+      .in('group_tag', joinedGroups);
+    
+    if (!membersData) return;
+    
+    const counts = await Promise.all(membersData.map(async (mem) => {
+      const lastViewed = mem.last_viewed_at || '2000-01-01T00:00:00.000Z';
+      
+      const { count } = await supabase
+        .from('messages')
+        .select('*', { count: 'exact', head: true })
+        .eq('group_tag', mem.group_tag)
+        .gt('created_at', lastViewed)
+        .neq('sender_id', guest.id); // 🔥 QUAN TRỌNG: Không đếm tin nhắn do chính mình gửi
+
+      if (count && count > 0) {
+        setUnreadGroupTags(prev => prev.includes(mem.group_tag) ? prev : [...prev, mem.group_tag]);
+      } else {
+        setUnreadGroupTags(prev => prev.filter(t => t !== mem.group_tag));
+      }
+      return count || 0;
+    }));
+    setUnreadCount(counts.reduce((acc, curr) => acc + curr, 0));
+  } catch (error) { console.error(error); }
+};
+
   useEffect(() => { if (!activeChatTag) fetchUnreadMessages(); }, [joinedGroups, activeChatTag, guest.id]);
 
   // Realtime Listener
@@ -195,19 +229,23 @@ export default function GuestDashboard({ guest }: DashboardProps) {
           const isMyGroup = joinedGroups.includes(newMsg.group_tag);
           const isNotMe = newMsg.sender_id !== guest.id;
           const isNotActive = activeChatTag !== newMsg.group_tag;
-          if (isMyGroup && isNotMe && isNotActive) {
-            setUnreadCount((prev) => prev + 1);
-            setUnreadGroupTags(prev => prev.includes(newMsg.group_tag) ? prev : [...prev, newMsg.group_tag]);
-            triggerNotification(newMsg); 
+          if (isMyGroup && isNotMe) {
+            if (isNotActive) {
+                setUnreadCount((prev) => prev + 1);
+                setUnreadGroupTags(prev => prev.includes(newMsg.group_tag) ? prev : [...prev, newMsg.group_tag]);
+                triggerNotification(newMsg);
+            } else {
+                markGroupAsRead(newMsg.group_tag); // Đang mở nhóm đó thì cập nhật "đã xem" luôn
+            }
           }
       }).subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [joinedGroups, activeChatTag, guest.id]);
 
-  useEffect(() => { const channel = supabase.channel(`my_groups_update:${guest.id}`).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'group_members', filter: `guest_id=eq.${guest.id}` }, (payload: any) => { if (payload.new?.group_tag) { setJoinedGroups(prev => [...prev, payload.new.group_tag]); } }).subscribe(); return () => { supabase.removeChannel(channel); }; }, [guest.id]);
+  useEffect(() => { const channel = supabase.channel(`my_groups_update:${guest.id}`).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'group_members', filter: `guest_id=eq.${guest.id}` }, (payload: any) => { if (payload.new?.group_tag) { setJoinedGroups(prev => prev.includes(payload.new.group_tag) ? prev : [...prev, payload.new.group_tag]); } }).subscribe(); return () => { supabase.removeChannel(channel); }; }, [guest.id]);
 
   const fetchRealMembers = async (groupTag: string) => { setLoadingMembers(true); try { const { data } = await supabase.from('group_members').select('guests(id, name, tags)').eq('group_tag', groupTag).limit(15); const realList = [{ id: 'admin-host', name: HOST_INFO.name, short: HOST_INFO.shortName, isHost: true }]; if (data) data.forEach((item: any) => { const g = item.guests; if (g && g.id !== guest.id && !g.tags?.includes('admin')) { realList.push({ id: g.id, name: g.name, short: g.name.charAt(0).toUpperCase(), isHost: false }); } }); setPreviewMembers(realList); } catch (e) { console.error(e); } setLoadingMembers(false); };
-  const handlePreviewGroup = (group: ChatGroupInfo) => { if (joinedGroups.includes(group.tag_identifier)) { setActiveChatTag(group.tag_identifier); setPreviewGroup(null); } else { setPreviewGroup(group); setActiveChatTag(null); fetchRealMembers(group.tag_identifier); } };
+  const handlePreviewGroup = (group: ChatGroupInfo) => { if (joinedGroups.includes(group.tag_identifier)) { setActiveChatTag(group.tag_identifier); setPreviewGroup(null); markGroupAsRead(group.tag_identifier); } else { setPreviewGroup(group); setActiveChatTag(null); fetchRealMembers(group.tag_identifier); } };
   const handleJoinGroup = async () => { if (!previewGroup) return; setJoinedGroups(prev => [...prev, previewGroup.tag_identifier]); setActiveChatTag(previewGroup.tag_identifier); setPreviewGroup(null); try { await supabase.from('group_members').insert({ group_tag: previewGroup.tag_identifier, guest_id: guest.id, last_viewed_at: new Date().toISOString() }); } catch (e) { console.error(e); } };
   const handleLeaveGroup = (tag: string) => { setJoinedGroups(prev => prev.filter(t => t !== tag)); setActiveChatTag(null); };
   const handleSendConfession = async () => { if (!content && !file) return; setUploading(true); try { let publicUrl = null; if (file) { const fileExt = file.name.split('.').pop(); const fileName = `${guest.id}_${Date.now()}.${fileExt}`; const { error: uploadError } = await supabase.storage.from('invitation-media').upload(fileName, file); if (uploadError) throw uploadError; publicUrl = supabase.storage.from('invitation-media').getPublicUrl(fileName).data.publicUrl; } await supabase.from('confessions').insert({ guest_id: guest.id, content: content, image_url: publicUrl }); setSent(true); setContent(""); setFile(null); } catch (error: any) { alert("Lỗi: " + error.message); } finally { setUploading(false); } };
@@ -216,6 +254,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
     if (notification?.groupTag && joinedGroups.includes(notification.groupTag)) {
         setActiveChatTag(notification.groupTag);
         setActiveTab('chat');
+        markGroupAsRead(notification.groupTag);
     }
     setNotification(null);
   };
@@ -231,11 +270,11 @@ export default function GuestDashboard({ guest }: DashboardProps) {
   return (
     <div 
         className="min-h-screen bg-[#0a0a0a] text-white pb-28 font-sans overflow-x-hidden relative"
-        // QUAN TRỌNG: Mở khóa âm thanh khi người dùng chạm vào màn hình
         onClick={unlockAudio} 
         onTouchStart={unlockAudio}
     >
       
+      {/* NOTIFICATION POPUP */}
       {notification && (
           <div 
             className="fixed top-4 left-4 right-4 z-[100] bg-[#1a1a1a]/95 backdrop-blur-md border border-[#d4af37]/50 p-3 rounded-2xl shadow-2xl flex items-center gap-3 animate-in slide-in-from-top-5 duration-300 cursor-pointer"
@@ -243,10 +282,10 @@ export default function GuestDashboard({ guest }: DashboardProps) {
           >
               <div className="w-10 h-10 rounded-full bg-[#222] border border-[#333] overflow-hidden flex-shrink-0">
                   {notification.avatar && notification.avatar.startsWith('http') ? (
-                      <img src={notification.avatar} className="w-full h-full object-cover" />
+                      <img src={notification.avatar} className="w-full h-full object-cover" alt="avatar" />
                   ) : (
                       <div className="w-full h-full flex items-center justify-center font-bold text-xs bg-[#d4af37] text-black">
-                          {notification.avatar || "🔔"}
+                          {notification.title.substring(0,2)}
                       </div>
                   )}
               </div>
@@ -275,8 +314,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                <div>
                    <h1 className="text-xl font-bold text-[#d4af37]">Xin chào, {guest.name}</h1>
                    <div className="flex items-center gap-2">
-                       <p className="text-gray-400 text-xs">Ấn vào avatar để thay đổi</p>
-                       
+                       <p className="text-gray-400 text-xs">Social Hub</p>
                        {!hasPermission && (
                            <button onClick={requestPermission} className="text-[10px] bg-[#d4af37] text-black px-2 py-0.5 rounded-full font-bold flex items-center gap-1 animate-pulse">
                                <BellRing size={10} /> Bật thông báo
@@ -329,11 +367,11 @@ export default function GuestDashboard({ guest }: DashboardProps) {
              )}
              {previewGroup && (
                  <div className="flex flex-col h-[65vh] justify-between bg-[#111] border border-[#333] rounded-2xl p-6 relative overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300">
-                     <div className="absolute top-0 left-0 w-full h-40 pointer-events-none"><div className="absolute inset-0 bg-gradient-to-b from-black/80 via-[#111] to-[#111] z-10"></div>{previewGroup.avatar_url && <img src={previewGroup.avatar_url} className="w-full h-full object-cover opacity-50 blur-sm"/>}</div>
+                     <div className="absolute top-0 left-0 w-full h-40 pointer-events-none"><div className="absolute inset-0 bg-gradient-to-b from-black/80 via-[#111] to-[#111] z-10"></div>{previewGroup.avatar_url && <img src={previewGroup.avatar_url} className="w-full h-full object-cover opacity-50 blur-sm" alt="group"/>}</div>
                      <div className="relative z-10">
                          <button onClick={() => setPreviewGroup(null)} className="absolute -top-2 -left-2 p-2.5 bg-black/40 hover:bg-black/60 rounded-full text-white backdrop-blur-md border border-white/10 z-20"><ArrowLeft size={18}/></button>
                          <div className="mt-8 text-center">
-                            <div className="w-20 h-20 bg-gradient-to-tr from-[#222] to-[#333] border border-[#d4af37]/50 rounded-2xl mx-auto flex items-center justify-center text-[#d4af37] shadow-[0_0_30px_rgba(212,175,55,0.15)] mb-4 overflow-hidden">{previewGroup.avatar_url ? <img src={previewGroup.avatar_url} className="w-full h-full object-cover"/> : <Users size={36} strokeWidth={1.5} />}</div>
+                            <div className="w-20 h-20 bg-gradient-to-tr from-[#222] to-[#333] border border-[#d4af37]/50 rounded-2xl mx-auto flex items-center justify-center text-[#d4af37] shadow-[0_0_30px_rgba(212,175,55,0.15)] mb-4 overflow-hidden">{previewGroup.avatar_url ? <img src={previewGroup.avatar_url} className="w-full h-full object-cover" alt="avatar"/> : <Users size={36} strokeWidth={1.5} />}</div>
                             <h2 className="text-xl font-bold text-white">{previewGroup.name}</h2>
                             <p className="text-gray-400 text-xs mt-1">{loadingMembers ? "Đang tải thành viên..." : `${Math.max(previewMembers.length, previewGroup.member_count)} thành viên tham gia`}</p>
                          </div>
@@ -373,5 +411,5 @@ function NavButton({ active, icon, label, onClick, badge }: any) {
       </div>
       <span className="text-[9px] font-bold uppercase tracking-wider">{label}</span>
     </button>
-  )
+  );
 }
