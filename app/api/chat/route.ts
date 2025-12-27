@@ -6,10 +6,9 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 const API_KEYS = (process.env.GEMINI_API_KEYS || "").split(',').map(k => k.trim()).filter(k => k);
 
 // --- CẤU HÌNH ĐỊA ĐIỂM & BẢN ĐỒ ---
-// Đây là biến Admin cập nhật thủ công (hoặc lấy từ DB sau này)
-const CURRENT_HOST_LOCATION = "Tòa nhà C5 - Tầng 3 (Phòng Hội trường)";
-const SCHOOL_MAP_IMAGE = "media/map2d.png"; // Bạn nhớ chép ảnh bản đồ vào public/media
-const GOOGLE_MAP_LINK = "https://maps.app.goo.gl/UTGcbpH1DBL6YRdn8"; // Link map trường bạn
+const CURRENT_HOST_LOCATION = "Tòa nhà C5 (Phòng Hội trường)";
+const SCHOOL_MAP_IMAGE = "media/map2d.png"; 
+const GOOGLE_MAP_LINK = "https://maps.app.goo.gl/iZqvwJVA4CXNEYqm6"; 
 
 async function generateWithFallback(systemPrompt: string, userMessage: string) {
   let lastError = null;
@@ -18,9 +17,8 @@ async function generateWithFallback(systemPrompt: string, userMessage: string) {
   for (const apiKey of shuffledKeys) {
     try {
       const genAI = new GoogleGenerativeAI(apiKey);
-      // Update model mới của bạn
       const model = genAI.getGenerativeModel({ 
-        model: "gemini-2.5-flash-preview-09-2025", // Hoặc tên bản preview bạn đang dùng
+        model: "gemini-2.5-flash-preview-09-2025", // Check lại model này nếu lỗi thì đổi về gemini-1.5-flash
         systemInstruction: systemPrompt,
       });
 
@@ -39,8 +37,27 @@ async function generateWithFallback(systemPrompt: string, userMessage: string) {
 
 export async function POST(req: Request) {
   try {
-    // Nhận thêm guestTags từ Frontend để phân loại đối tượng
-    const { messages, guestName, guestStatus, guestTags } = await req.json();
+    
+    // [QUAN TRỌNG] Thêm biến 'guestInfor' vào đây để nhận dữ liệu từ Frontend gửi sang
+    const { messages, guestName, guestStatus, guestTags, guestInfor } = await req.json();
+
+    // =======================================================
+    // [DEBUG LOG] BẮT ĐẦU KIỂM TRA DỮ LIỆU
+    // =======================================================
+    console.log("=========== START DEBUG CHAT REQUEST ===========");
+    console.log("1. Tên khách:", guestName);
+    console.log("2. Tags:", guestTags);
+    
+    // Kiểm tra kỹ biến guestInfor
+    console.log("3. Biến 'guestInfor' nhận được:", guestInfor); 
+    if (guestInfor) {
+        console.log("   -> TRẠNG THÁI: OK (Có dữ liệu)");
+    } else {
+        console.log("   -> TRẠNG THÁI: NULL/UNDEFINED (Frontend chưa gửi hoặc DB rỗng)");
+    }
+    console.log("=========== END DEBUG ===========");
+    // =======================================================
+
     const lastUserMessage = messages[messages.length - 1]?.content || "Xin chào";
 
     // --- LOGIC PHÂN LOẠI ĐỐI TƯỢNG ---
@@ -56,6 +73,7 @@ export async function POST(req: Request) {
     }
 
     // --- SYSTEM PROMPT MỚI ---
+    // [QUAN TRỌNG] Đã thêm dòng 'LƯU Ý ĐẶC BIỆT' để AI đọc được guestInfor
     const systemPrompt = `
     BẠN LÀ AI: 
     Bạn là Catmi. 
@@ -66,11 +84,13 @@ export async function POST(req: Request) {
     - Tên: ${guestName || "Khách quý"}
     - Nhóm: ${tagsStr || "Khách mời"}
     - Trạng thái RSVP: ${guestStatus ? "Đã tham gia" : "Chưa xác nhận"}
-
-    THÔNG TIN ĐỊA ĐIỂM (CHỈ ĐƯỜNG):
-    - Vị trí hiện tại của Kiên (Chủ tiệc): ${CURRENT_HOST_LOCATION}.
-    - Link Google Map: ${GOOGLE_MAP_LINK}
-    - Nếu khách hỏi đường đi, bản đồ: Hãy chỉ dẫn họ đến vị trí trên và nói "Để em gửi bản đồ cho nè".
+    - THÔNG TIN RIÊNG (LƯU Ý ĐẶC BIỆT): ${guestInfor ? guestInfor : "Không có"}  <-- DÒNG MỚI QUAN TRỌNG NÀY
+    
+    CHỈ ĐƯỜNG:
+    - Vị trí: ${CURRENT_HOST_LOCATION}.
+    - Link Map: ${GOOGLE_MAP_LINK}
+    - QUY TẮC QUAN TRỌNG: Khi gửi link bản đồ, BẮT BUỘC viết đúng format này: [Đại học Thủy lợi](${GOOGLE_MAP_LINK})
+    (Không được gửi link trần).
 
     TÍNH CÁCH & GIỌNG ĐIỆU (QUAN TRỌNG):
     ${toneInstruction}
@@ -86,6 +106,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ role: 'assistant', content: aiReply });
 
   } catch (error: any) {
+    console.error("Lỗi Server:", error); // Log lỗi ra xem cho dễ
     return NextResponse.json(
       { role: 'assistant', content: '[Tired] Hic, server lỗi rồi khách quý ơi...' }, 
       { status: 500 }

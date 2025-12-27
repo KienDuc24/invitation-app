@@ -1,10 +1,11 @@
+// components/CatmiChat.tsx
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { X, Send, Loader2, Sparkles } from "lucide-react";
+import { X, Send, Loader2, Sparkles, MapPin } from "lucide-react"; // Import thêm MapPin nếu thích icon
 import Image from "next/image";
 
-// Map cảm xúc -> Ảnh GIF
+// ... (Giữ nguyên constant CATMI_EXPRESSIONS cũ) ...
 const CATMI_EXPRESSIONS: Record<string, string> = {
     default: "/media/welcome.gif",   
     amazed: "/media/amazed.gif",    
@@ -35,8 +36,8 @@ const CATMI_EXPRESSIONS: Record<string, string> = {
 interface CatmiChatProps {
     guestName?: string;
     guestStatus?: boolean;
-    guestTags?: string[]; 
-    guestInfor?: string; // 👈 Thêm prop mới nhận thông tin chi tiết
+    guestTags?: string[];
+    guestInfor?: string;
 }
 
 export default function CatmiChat({ guestName, guestStatus, guestTags, guestInfor }: CatmiChatProps) {
@@ -55,7 +56,7 @@ export default function CatmiChat({ guestName, guestStatus, guestTags, guestInfo
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isOpen]);
 
-  // Xử lý Tag cảm xúc từ Bot
+  // Hàm xử lý Tag cảm xúc
   const processResponse = (fullText: string) => {
     if (!fullText) return { cleanText: "", mood: "default", showMap: false };
     
@@ -63,26 +64,55 @@ export default function CatmiChat({ guestName, guestStatus, guestTags, guestInfo
     let showMap = false;
     let cleanText = fullText;
 
-    // Regex bắt [Tag] ở đầu câu và lấy phần còn lại
     const match = fullText.match(/^\[(.*?)\]\s*([\s\S]*)/);
     if (match) {
         let tag = match[1].toLowerCase();
         cleanText = match[2];
 
-        // Chuẩn hóa tag
-        if (tag.includes('start')) tag = 'welcome';
-        if (tag.includes('processing')) tag = 'thinking';
-        if (tag.includes('low battery')) tag = 'tired';
-        if (tag.includes('found')) tag = 'success';
         if (tag.includes('guiding') || tag.includes('guild')) {
             mood = 'guiding';
             showMap = true;
+        } else {
+             const foundKey = Object.keys(CATMI_EXPRESSIONS).find(k => tag.includes(k));
+             if (foundKey) mood = foundKey;
         }
-
-        const foundKey = Object.keys(CATMI_EXPRESSIONS).find(k => tag.includes(k));
-        if (foundKey) mood = foundKey;
     }
     return { cleanText, mood, showMap };
+  };
+
+  // 👇 HÀM MỚI: Render text có chứa Link Markdown [Text](Url)
+  const renderMessageContent = (text: string) => {
+    // Regex tìm chuỗi [Text](Url)
+    const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+    const parts = [];
+    let lastIndex = 0;
+    let match;
+
+    while ((match = linkRegex.exec(text)) !== null) {
+      // Đẩy phần text thường trước link vào
+      if (match.index > lastIndex) {
+        parts.push(text.substring(lastIndex, match.index));
+      }
+      // Đẩy phần Link vào (hiển thị màu xanh, bấm được)
+      parts.push(
+        <a 
+          key={match.index} 
+          href={match[2]} 
+          target="_blank" 
+          rel="noopener noreferrer"
+          className="text-blue-600 underline font-bold hover:text-blue-800 mx-1"
+        >
+          {match[1]}
+        </a>
+      );
+      lastIndex = linkRegex.lastIndex;
+    }
+    // Đẩy phần text còn lại
+    if (lastIndex < text.length) {
+      parts.push(text.substring(lastIndex));
+    }
+
+    return parts.length > 0 ? parts : text;
   };
 
   const handleSend = async () => {
@@ -103,7 +133,7 @@ export default function CatmiChat({ guestName, guestStatus, guestTags, guestInfo
             guestName,
             guestStatus,
             guestTags,
-            guestInfor // 👈 Gửi thông tin này lên server
+            guestInfor
         }),
       });
 
@@ -113,21 +143,18 @@ export default function CatmiChat({ guestName, guestStatus, guestTags, guestInfo
           const { cleanText, mood, showMap } = processResponse(data.content);
           setCurrentMood(mood);
 
-          // Render tin nhắn text
           setMessages(prev => [...prev, { role: 'assistant', content: cleanText }]);
 
-          // Render ảnh bản đồ nếu Bot gửi tag [Guiding]
           if (showMap) {
              setMessages(prev => [...prev, { 
                  role: 'assistant', 
-                 content: '/media/map2d.png', // Đường dẫn ảnh bản đồ
+                 content: '/media/map2d.png', // Đổi lại đúng tên file ảnh bạn up
                  type: 'image' 
              }]);
           }
       } 
     } catch (error) {
-      console.error(error);
-      setMessages(prev => [...prev, { role: 'assistant', content: 'Hic, Catmi bị ốm rồi (Lỗi kết nối)...' }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: 'Hic, Catmi bị ốm rồi...' }]);
       setCurrentMood("sad");
     } finally {
       setIsLoading(false);
@@ -142,10 +169,7 @@ export default function CatmiChat({ guestName, guestStatus, guestTags, guestInfo
           className="group relative w-16 h-16 bg-white rounded-full shadow-xl flex items-center justify-center transition-transform hover:scale-110 border-2 border-orange-400 overflow-hidden"
         >
           <div className="w-full h-full relative">
-            <Image 
-                src={CATMI_EXPRESSIONS[currentMood] || CATMI_EXPRESSIONS['default']} 
-                alt="Catmi" fill className="object-cover" sizes="64px" unoptimized
-            />
+            <Image src={CATMI_EXPRESSIONS[currentMood] || CATMI_EXPRESSIONS['default']} alt="Catmi" fill className="object-cover" sizes="64px" unoptimized />
           </div>
         </button>
       )}
@@ -155,10 +179,7 @@ export default function CatmiChat({ guestName, guestStatus, guestTags, guestInfo
           <div className="bg-gradient-to-r from-orange-500 to-red-600 p-3 flex justify-between items-center text-white shadow-md">
             <div className="flex items-center gap-3">
                 <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center border-2 border-yellow-300 overflow-hidden relative">
-                    <Image 
-                        src={CATMI_EXPRESSIONS[currentMood] || CATMI_EXPRESSIONS['default']} 
-                        alt="Avatar" fill className="object-cover" sizes="48px" unoptimized
-                    />
+                    <Image src={CATMI_EXPRESSIONS[currentMood] || CATMI_EXPRESSIONS['default']} alt="Avatar" fill className="object-cover" sizes="48px" unoptimized />
                 </div>
                 <div>
                     <h3 className="font-bold text-sm flex items-center gap-1">Catmi <Sparkles size={12} className="text-yellow-300" /></h3>
@@ -177,16 +198,17 @@ export default function CatmiChat({ guestName, guestStatus, guestTags, guestInfo
                      </div>
                  )}
                  
-                 {/* Xử lý hiển thị Text hoặc Ảnh */}
                  {msg.type === 'image' ? (
-                     <div className="relative w-48 h-32 rounded-lg overflow-hidden border border-orange-300 shadow-sm">
-                        <Image src={msg.content} alt="Map" fill className="object-cover" unoptimized />
+                     <div className="relative w-48 h-32 rounded-lg overflow-hidden border border-orange-300 shadow-sm cursor-pointer group">
+                        <Image src={msg.content} alt="Map" fill className="object-cover transition-transform group-hover:scale-105" unoptimized />
+                        <div className="absolute bottom-0 w-full bg-black/50 text-white text-[10px] p-1 text-center">Bấm để phóng to</div>
                      </div>
                  ) : (
                      <div className={`max-w-[80%] rounded-2xl p-3 text-sm shadow-sm ${
                          msg.role === 'user' ? 'bg-blue-600 text-white rounded-br-none' : 'bg-white border border-gray-100 text-gray-800 rounded-bl-none'
                      }`}>
-                        {msg.content}
+                        {/* 👇 DÙNG HÀM RENDER MỚI Ở ĐÂY */}
+                        {msg.role === 'user' ? msg.content : renderMessageContent(msg.content)}
                      </div>
                  )}
               </div>

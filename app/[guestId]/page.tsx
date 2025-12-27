@@ -1,9 +1,9 @@
 import MobileInvitation from "@/components/3d/InvitationCard";
-import GuestDashboard from "@/components/GuestDashboard"; 
-import { getGuestById } from "@/lib/supabase"; 
+import CatmiChat from "@/components/CatmiChat";
+import GuestDashboard from "@/components/GuestDashboard";
+import { getGuestById } from "@/lib/supabase";
 import { Metadata } from "next";
 import { notFound } from "next/navigation";
-import CatmiChat from "@/components/CatmiChat"; 
 
 // Tắt Cache để luôn lấy dữ liệu mới nhất
 export const revalidate = 0; 
@@ -27,7 +27,16 @@ export default async function GuestPage({ params }: GuestPageProps) {
 
   if (!guest) return notFound();
 
-  const isConfirmed = guest.isConfirmed || guest.is_confirmed; 
+  const isConfirmed = guest.isConfirmed || guest.is_confirmed;
+
+  // 🐛 DEBUG: Kiểm tra dữ liệu infor
+  console.log('🔍 Guest Data Loaded:', {
+    name: guest.name,
+    tags: guest.tags,
+    infor: guest.infor,
+    info: guest.info,
+    allKeys: Object.keys(guest)
+  });
 
   return (
     <>
@@ -49,7 +58,7 @@ export default async function GuestPage({ params }: GuestPageProps) {
           guestName={guest.name} 
           guestStatus={isConfirmed}
           guestTags={guest.tags} // Mảng tags: ['Bạn cấp 3', 'Thân thiết']
-          guestInfor={guest.infor || guest.info} // 👇 TRUYỀN THÔNG TIN MỚI (Hỗ trợ cả 'infor' và 'info')
+          guestInfor={guest.infor} // 👇 TRUYỀN THÔNG TIN MỚI (Hỗ trợ cả 'infor' và 'info')
       />
     </>
   );
