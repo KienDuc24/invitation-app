@@ -260,10 +260,16 @@ export default function GuestDashboard({ guest }: DashboardProps) {
   };
 
   if (activeTab === 'card') {
-    return (
-      <div className="relative w-full h-[100dvh] bg-black">
-        <MobileInvitation guestName={guest.name} guestId={guest.id} isConfirmed={true} initialAttendance={guest.attendance} initialWish={guest.wish} onTabChange={(tab) => setActiveTab(tab as any)}/>
-      </div>
+return (
+      // Trả về trực tiếp thiệp, không có Header hay Bottom Nav
+      <MobileInvitation 
+        guestName={guest.name} 
+        guestId={guest.id} 
+        isConfirmed={true} 
+        initialAttendance={guest.attendance} 
+        initialWish={guest.wish} 
+        onTabChange={(tab) => setActiveTab(tab as any)} // Nhận callback đóng thiệp
+      />
     );
   }
 
