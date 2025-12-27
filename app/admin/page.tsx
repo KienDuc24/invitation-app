@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
-import { Users, CheckCircle, XCircle, MessageSquare, Lock, Loader2, Image as ImageIcon } from "lucide-react";
+import { Users, CheckCircle, XCircle, MessageSquare, Lock, Loader2, MessageCircle } from "lucide-react";
+import ChatGroup from "@/components/ChatGroup"; 
 
 // Ép trang này luôn tải dữ liệu mới nhất (không cache)
 export const dynamic = 'force-dynamic';
@@ -15,9 +16,18 @@ export default function AdminPage() {
   const [guests, setGuests] = useState<any[]>([]);
   const [confessions, setConfessions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'wishes'>('overview');
+  
+  // Tab quản lý
+  const [activeTab, setActiveTab] = useState<'overview' | 'wishes' | 'chat'>('overview');
 
-  // --- MÃ PIN BẢO MẬT (Bạn tự sửa số này nhé) ---
+  // State cho phần Chat Admin
+  const [chatGroups, setChatGroups] = useState<string[]>(['general']);
+  const [selectedGroup, setSelectedGroup] = useState<string>('general');
+  
+  // --- USER ADMIN THỰC TẾ (Sẽ lấy từ DB) ---
+  const [adminUser, setAdminUser] = useState<any>(null);
+
+  // --- MÃ PIN BẢO MẬT ---
   const SECRET_PIN = "2025"; 
 
   const handleLogin = (e: React.FormEvent) => {
@@ -40,21 +50,56 @@ export default function AdminPage() {
       .select('*')
       .order('is_confirmed', { ascending: false });
 
-    // 2. Lấy lưu bút (Join với bảng guests để lấy tên người gửi)
+    // 2. Lấy lưu bút
     const { data: confessionsData } = await supabase
       .from('confessions')
       .select('*, guests(name)')
       .order('created_at', { ascending: false });
 
-    if (guestsData) setGuests(guestsData);
+    if (guestsData) {
+        setGuests(guestsData);
+
+        // --- A. TÌM NICK ADMIN ĐỂ LẤY ID THẬT ---
+        const foundAdmin = guestsData.find((g: any) => g.tags && g.tags.includes('admin'));
+        
+        if (foundAdmin) {
+            setAdminUser({
+                id: foundAdmin.id, // ID thật từ DB -> Chat OK
+                name: "Đức Kiên",
+                shortName: "DK", 
+                role: "Host"
+            });
+        } else {
+            console.warn("CẢNH BÁO: Chưa tìm thấy user có tag 'admin'. Hãy chạy lệnh SQL Insert!");
+            // Fallback tạm (Chat sẽ lỗi nếu dùng cái này)
+            setAdminUser({
+                id: 'admin-host-id',
+                name: 'Đức Kiên',
+                shortName: 'DK'
+            });
+        }
+
+        // --- B. TẠO LIST NHÓM CHAT (Lọc bỏ tag 'admin') ---
+        const tags = new Set<string>(['general']);
+        guestsData.forEach((g: any) => {
+            if (g.tags && Array.isArray(g.tags)) {
+                g.tags.forEach((t: string) => {
+                    if (t !== 'admin') tags.add(t); 
+                });
+            }
+        });
+        setChatGroups(Array.from(tags));
+    }
+
     if (confessionsData) setConfessions(confessionsData);
     setLoading(false);
   };
 
-  // --- TÍNH TOÁN THỐNG KÊ ---
-  const totalGuests = guests.length;
-  const confirmedGuests = guests.filter(g => g.is_confirmed && g.attendance === 'Có tham dự').length;
-  const declinedGuests = guests.filter(g => g.is_confirmed && g.attendance?.includes('bận')).length;
+  // --- TÍNH TOÁN THỐNG KÊ (Loại trừ Admin ra) ---
+  const realGuests = guests.filter(g => !g.tags?.includes('admin'));
+  const totalGuests = realGuests.length;
+  const confirmedGuests = realGuests.filter(g => g.is_confirmed && g.attendance === 'Có tham dự').length;
+  const declinedGuests = realGuests.filter(g => g.is_confirmed && g.attendance?.includes('bận')).length;
   const waitingGuests = totalGuests - confirmedGuests - declinedGuests;
 
   // --- GIAO DIỆN ĐĂNG NHẬP ---
@@ -71,11 +116,9 @@ export default function AdminPage() {
           </div>
           <form onSubmit={handleLogin} className="space-y-4">
             <input 
-              type="password" 
-              value={pin}
-              onChange={(e) => setPin(e.target.value)}
+              type="password" value={pin} onChange={(e) => setPin(e.target.value)} 
               placeholder="Nhập mã PIN..." 
-              className="w-full bg-[#0a0a0a] border border-[#333] text-white text-center text-2xl tracking-[0.5em] p-3 rounded-xl focus:border-[#d4af37] focus:outline-none transition-colors placeholder:text-gray-700 placeholder:text-sm placeholder:tracking-normal"
+              className="w-full bg-[#0a0a0a] border border-[#333] text-white text-center text-2xl tracking-[0.5em] p-3 rounded-xl focus:border-[#d4af37] focus:outline-none transition-colors"
               autoFocus
             />
             <button className="w-full bg-[#d4af37] text-black font-bold py-3 rounded-xl hover:bg-[#b89628] transition-transform active:scale-95">
@@ -98,10 +141,7 @@ export default function AdminPage() {
             <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
             <h1 className="text-lg font-bold text-[#d4af37] uppercase tracking-wider">Dashboard</h1>
           </div>
-          <button 
-            onClick={() => fetchData()} 
-            className="text-xs bg-[#222] border border-[#333] px-3 py-1.5 rounded-full hover:bg-[#333] flex items-center gap-1 transition-colors"
-          >
+          <button onClick={() => fetchData()} className="text-xs bg-[#222] border border-[#333] px-3 py-1.5 rounded-full hover:bg-[#333] flex items-center gap-1 transition-colors">
              {loading ? <Loader2 size={12} className="animate-spin"/> : <RefreshIcon />} Làm mới
           </button>
         </div>
@@ -109,7 +149,7 @@ export default function AdminPage() {
 
       <div className="max-w-6xl mx-auto p-4 space-y-8 mt-6">
         
-        {/* 1. THẺ THỐNG KÊ (STATS) */}
+        {/* 1. THỐNG KÊ */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <StatCard label="Tổng khách mời" value={totalGuests} icon={<Users size={20}/>} color="text-blue-400" bg="bg-blue-400/10" />
           <StatCard label="Sẽ tham gia" value={confirmedGuests} icon={<CheckCircle size={20}/>} color="text-green-400" bg="bg-green-400/10" />
@@ -118,14 +158,16 @@ export default function AdminPage() {
         </div>
 
         {/* 2. THANH CHUYỂN TAB */}
-        <div className="flex gap-2 border-b border-[#333]">
+        <div className="flex gap-2 border-b border-[#333] overflow-x-auto pb-1">
             <TabButton active={activeTab === 'overview'} onClick={() => setActiveTab('overview')} label="Danh sách khách" />
-            <TabButton active={activeTab === 'wishes'} onClick={() => setActiveTab('wishes')} label={`Lưu bút & Ảnh (${confessions.length})`} />
+            <TabButton active={activeTab === 'wishes'} onClick={() => setActiveTab('wishes')} label={`Lưu bút (${confessions.length})`} />
+            <TabButton active={activeTab === 'chat'} onClick={() => setActiveTab('chat')} label="Tin nhắn Nhóm" />
         </div>
 
         {/* 3. NỘI DUNG TAB */}
-        {activeTab === 'overview' ? (
-           // --- TAB DANH SÁCH KHÁCH ---
+        
+        {/* --- TAB: OVERVIEW --- */}
+        {activeTab === 'overview' && (
            <div className="bg-[#111] border border-[#333] rounded-2xl overflow-hidden shadow-xl">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm text-left">
@@ -134,77 +176,89 @@ export default function AdminPage() {
                       <th className="px-6 py-4">Tên khách</th>
                       <th className="px-6 py-4">Nhóm (Tag)</th>
                       <th className="px-6 py-4">Trạng thái</th>
-                      <th className="px-6 py-4">Lời nhắn RSVP</th>
+                      <th className="px-6 py-4">Lời nhắn</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#222]">
-                    {guests.map((guest) => (
+                    {realGuests.map((guest) => (
                       <tr key={guest.id} className="hover:bg-[#1a1a1a]/50 transition-colors">
                         <td className="px-6 py-4 font-bold text-white">{guest.name}</td>
-                        <td className="px-6 py-4">
-                          <span className="bg-[#222] px-2 py-1 rounded text-[10px] text-gray-400 border border-[#333] uppercase">
-                            {guest.tags?.[0] || 'N/A'}
-                          </span>
-                        </td>
+                        <td className="px-6 py-4"><span className="bg-[#222] px-2 py-1 rounded text-[10px] text-gray-400 border border-[#333] uppercase">{guest.tags?.[0] || 'N/A'}</span></td>
                         <td className="px-6 py-4">
                           {guest.is_confirmed ? (
                             guest.attendance === 'Có tham dự' 
                               ? <span className="text-green-500 font-bold bg-green-500/10 px-2 py-1 rounded text-xs border border-green-500/20">Tham dự</span>
                               : <span className="text-red-500 font-bold bg-red-500/10 px-2 py-1 rounded text-xs border border-red-500/20">Bận</span>
-                          ) : (
-                            <span className="text-gray-500 italic text-xs">Chưa trả lời</span>
-                          )}
+                          ) : <span className="text-gray-500 italic text-xs">Waiting</span>}
                         </td>
-                        <td className="px-6 py-4 text-gray-400 italic max-w-xs truncate">
-                           {guest.wish || "-"}
-                        </td>
+                        <td className="px-6 py-4 text-gray-400 italic max-w-xs truncate">{guest.wish || "-"}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
            </div>
-        ) : (
-           // --- TAB LƯU BÚT & ẢNH ---
+        )}
+
+        {/* --- TAB: WISHES --- */}
+        {activeTab === 'wishes' && (
            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {confessions.length === 0 ? (
-                <div className="col-span-full text-center py-20 text-gray-500 italic">Chưa có lưu bút nào. Hãy test thử đi!</div>
-              ) : (
+              {confessions.length === 0 ? <div className="col-span-full text-center py-20 text-gray-500 italic">Chưa có lưu bút nào.</div> :
                 confessions.map((item) => (
-                  <div key={item.id} className="bg-[#111] border border-[#333] rounded-2xl overflow-hidden shadow-lg hover:border-[#555] transition-colors flex flex-col">
-                     {/* Nếu có ảnh thì hiện ảnh */}
-                     {item.image_url && (
-                       <div className="relative h-48 bg-[#000]">
-                          <img src={item.image_url} alt="Kỷ niệm" className="w-full h-full object-cover" />
-                       </div>
-                     )}
-                     
+                  <div key={item.id} className="bg-[#111] border border-[#333] rounded-2xl overflow-hidden shadow-lg flex flex-col">
+                     {item.image_url && <div className="relative h-48 bg-[#000]"><img src={item.image_url} alt="Kỷ niệm" className="w-full h-full object-cover" /></div>}
                      <div className="p-4 flex-1 flex flex-col">
                         <div className="flex items-center gap-2 mb-3">
-                           <div className="w-8 h-8 rounded-full bg-[#d4af37] text-black flex items-center justify-center font-bold text-xs">
-                              {item.guests?.name?.charAt(0) || "?"}
-                           </div>
-                           <div>
-                              <p className="font-bold text-sm text-[#fadd7d]">{item.guests?.name || "Ẩn danh"}</p>
-                              <p className="text-[10px] text-gray-500">{new Date(item.created_at).toLocaleString('vi-VN')}</p>
-                           </div>
+                           <div className="w-8 h-8 rounded-full bg-[#d4af37] text-black flex items-center justify-center font-bold text-xs">{item.guests?.name?.charAt(0) || "?"}</div>
+                           <div><p className="font-bold text-sm text-[#fadd7d]">{item.guests?.name || "Ẩn danh"}</p><p className="text-[10px] text-gray-500">{new Date(item.created_at).toLocaleString('vi-VN')}</p></div>
                         </div>
-                        {item.content && (
-                          <div className="bg-[#1a1a1a] p-3 rounded-xl text-gray-300 text-sm italic relative">
-                             <MessageSquare size={12} className="absolute -top-1 -left-1 text-[#333] fill-[#333]" />
-                             "{item.content}"
-                          </div>
-                        )}
-                        
-                        {/* Nếu chỉ có ảnh mà không có lời nhắn */}
-                        {!item.content && !item.image_url && (
-                           <p className="text-gray-600 italic text-xs">Nội dung trống</p>
-                        )}
+                        {item.content && <div className="bg-[#1a1a1a] p-3 rounded-xl text-gray-300 text-sm italic relative"><MessageSquare size={12} className="absolute -top-1 -left-1 text-[#333] fill-[#333]" />"{item.content}"</div>}
                      </div>
                   </div>
                 ))
-              )}
+              }
            </div>
+        )}
+
+        {/* --- TAB: CHAT ADMIN (ĐÃ SỬA) --- */}
+        {activeTab === 'chat' && (
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 h-[600px]">
+                {/* 1. CỘT TRÁI: DANH SÁCH NHÓM */}
+                <div className="md:col-span-1 bg-[#111] border border-[#333] rounded-2xl p-4 flex flex-col h-full">
+                    <h3 className="text-[#d4af37] font-bold text-xs uppercase tracking-widest mb-4 flex items-center gap-2">
+                        <MessageCircle size={14} /> Chọn Nhóm
+                    </h3>
+                    <div className="space-y-2 overflow-y-auto flex-1 pr-2">
+                        {chatGroups.map(tag => (
+                            <button key={tag} onClick={() => setSelectedGroup(tag)} className={`w-full text-left px-4 py-3 rounded-xl text-sm font-bold transition-all flex items-center justify-between group ${selectedGroup === tag ? 'bg-[#d4af37] text-black shadow-lg shadow-[#d4af37]/20' : 'bg-[#1a1a1a] text-gray-400 hover:bg-[#222] hover:text-white'}`}>
+                                <span className="truncate">#{tag}</span>
+                                {selectedGroup === tag && <div className="w-2 h-2 bg-black rounded-full animate-pulse shrink-0"></div>}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                {/* 2. CỘT PHẢI: KHUNG CHAT */}
+                <div className="md:col-span-3 h-full flex flex-col">
+                    <div className="flex-1 border border-[#333] rounded-2xl overflow-hidden bg-[#111] shadow-2xl relative">
+                        <div className="absolute top-0 left-0 right-0 z-20 bg-[#1a1a1a]/90 backdrop-blur-sm p-3 border-b border-[#333] flex justify-between px-4 items-center">
+                            <span className="text-xs text-gray-500">Đang chat tại: <span className="text-[#d4af37] font-bold text-sm">#{selectedGroup}</span></span>
+                            <span className="text-[10px] bg-[#333] px-2 py-0.5 rounded text-gray-300 border border-[#444]">Admin Mode</span>
+                        </div>
+                        <div className="pt-10 h-full">
+                            {adminUser ? (
+                                <ChatGroup currentUser={adminUser} groupTag={selectedGroup} />
+                            ) : (
+                                <div className="h-full flex flex-col items-center justify-center text-gray-500 p-4 text-center">
+                                    <Loader2 size={32} className="animate-spin text-[#d4af37] mb-2"/>
+                                    <p>Đang tìm nick Admin...</p>
+                                    <p className="text-xs text-red-400 mt-2">Nếu quá lâu, hãy kiểm tra đã chạy lệnh SQL chưa.</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </div>
         )}
 
       </div>
@@ -216,29 +270,15 @@ export default function AdminPage() {
 function StatCard({ label, value, icon, color, bg }: any) {
   return (
     <div className="bg-[#111] border border-[#333] p-4 rounded-2xl flex items-center gap-4">
-      <div className={`w-10 h-10 rounded-full flex items-center justify-center ${bg} ${color}`}>
-        {icon}
-      </div>
-      <div>
-        <p className="text-gray-500 text-[10px] uppercase tracking-wider">{label}</p>
-        <p className="text-2xl font-bold text-white">{value}</p>
-      </div>
+      <div className={`w-10 h-10 rounded-full flex items-center justify-center ${bg} ${color}`}>{icon}</div>
+      <div><p className="text-gray-500 text-[10px] uppercase tracking-wider">{label}</p><p className="text-2xl font-bold text-white">{value}</p></div>
     </div>
   );
 }
 
 function TabButton({ active, onClick, label }: any) {
   return (
-    <button 
-      onClick={onClick}
-      className={`px-4 py-3 text-sm font-bold border-b-2 transition-all ${
-        active 
-          ? 'border-[#d4af37] text-[#d4af37]' 
-          : 'border-transparent text-gray-500 hover:text-white'
-      }`}
-    >
-      {label}
-    </button>
+    <button onClick={onClick} className={`px-4 py-3 text-sm font-bold border-b-2 transition-all whitespace-nowrap ${active ? 'border-[#d4af37] text-[#d4af37]' : 'border-transparent text-gray-500 hover:text-white'}`}>{label}</button>
   );
 }
 
