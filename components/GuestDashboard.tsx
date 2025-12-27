@@ -314,7 +314,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                <div>
                    <h1 className="text-xl font-bold text-[#d4af37]">Xin chào, {guest.name}</h1>
                    <div className="flex items-center gap-2">
-                       <p className="text-gray-400 text-xs">Social Hub</p>
+                       <p className="text-gray-400 text-xs">Nhấn vào để thay đổi ảnh đại diện</p>
                        {!hasPermission && (
                            <button onClick={requestPermission} className="text-[10px] bg-[#d4af37] text-black px-2 py-0.5 rounded-full font-bold flex items-center gap-1 animate-pulse">
                                <BellRing size={10} /> Bật thông báo

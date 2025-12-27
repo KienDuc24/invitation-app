@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabase";
-import { Users, CheckCircle, XCircle, MessageSquare, Lock, Loader2, MessageCircle, Hash } from "lucide-react";
+import { Users, CheckCircle, XCircle, MessageSquare, Lock, Loader2, MessageCircle, Hash, Volume2 } from "lucide-react";
 import ChatGroup from "@/components/ChatGroup"; 
 
 // Ép trang này luôn tải dữ liệu mới nhất (không cache)
@@ -30,86 +30,107 @@ export default function AdminPage() {
   // State cho phần Chat Admin
   const [chatGroups, setChatGroups] = useState<AdminGroupInfo[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<string>('general');
+  const [unreadGroupTags, setUnreadGroupTags] = useState<string[]>([]);
   
   // --- USER ADMIN THỰC TẾ ---
   const [adminUser, setAdminUser] = useState<any>(null);
 
+  // --- HỆ THỐNG ÂM THANH (WEB AUDIO API) ---
+  const audioContextRef = useRef<AudioContext | null>(null);
+
   // --- MÃ PIN BẢO MẬT ---
   const SECRET_PIN = "2025"; 
+
+  // --- 1. KHỞI TẠO AUDIO CONTEXT ---
+  useEffect(() => {
+    const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+    if (AudioContext) {
+        audioContextRef.current = new AudioContext();
+    }
+  }, []);
+
+  const playNotiSound = () => {
+    try {
+        const ctx = audioContextRef.current;
+        if (!ctx) return;
+        if (ctx.state === 'suspended') ctx.resume();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = 'sine';
+        const now = ctx.currentTime;
+        osc.frequency.setValueAtTime(400, now);
+        osc.frequency.exponentialRampToValueAtTime(800, now + 0.1);
+        gain.gain.setValueAtTime(0.3, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+        osc.start(now);
+        osc.stop(now + 0.1);
+    } catch (e) { console.error(e); }
+  };
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     if (pin === SECRET_PIN) {
       setIsAuthenticated(true);
       fetchData();
+      // Kích hoạt audio sau tương tác người dùng
+      if (audioContextRef.current) audioContextRef.current.resume();
     } else {
       alert("Sai mã PIN rồi! Thử lại đi.");
       setPin("");
     }
   };
 
+  // --- 2. HÀM ĐÁNH DẤU ĐÃ XEM CHO ADMIN ---
+  const markAsRead = async (tag: string) => {
+    if (!adminUser) return;
+    try {
+        await supabase.from('group_members')
+          .update({ last_viewed_at: new Date().toISOString() })
+          .eq('guest_id', adminUser.id)
+          .eq('group_tag', tag);
+        
+        // Xóa tag khỏi danh sách chưa đọc ở giao diện
+        setUnreadGroupTags(prev => prev.filter(t => t !== tag));
+    } catch (e) {
+        console.error("Lỗi cập nhật đã xem:", e);
+    }
+  };
+
   const fetchData = async () => {
     setLoading(true);
     
-    // 1. Lấy danh sách khách
-    const { data: guestsData } = await supabase
-      .from('guests')
-      .select('*')
-      .order('is_confirmed', { ascending: false });
+    const { data: guestsData } = await supabase.from('guests').select('*').order('is_confirmed', { ascending: false });
+    const { data: confessionsData } = await supabase.from('confessions').select('*, guests(name)').order('created_at', { ascending: false });
+    const { data: groupsInfoData } = await supabase.from('chat_groups').select('*');
 
-    // 2. Lấy lưu bút
-    const { data: confessionsData } = await supabase
-      .from('confessions')
-      .select('*, guests(name)')
-      .order('created_at', { ascending: false });
-
-    // 3. Lấy thông tin chi tiết nhóm (Tên, Avatar) từ bảng chat_groups
-    const { data: groupsInfoData } = await supabase
-      .from('chat_groups')
-      .select('*');
-
-    // Tạo Map để tra cứu thông tin nhóm nhanh
     const groupsInfoMap: Record<string, any> = {};
-    groupsInfoData?.forEach((g: any) => {
-        groupsInfoMap[g.tag] = g;
-    });
+    groupsInfoData?.forEach((g: any) => { groupsInfoMap[g.tag] = g; });
 
     if (guestsData) {
         setGuests(guestsData);
-
-        // --- A. TÌM NICK ADMIN ---
         const foundAdmin = guestsData.find((g: any) => g.tags && g.tags.includes('admin'));
         
-        if (foundAdmin) {
-            setAdminUser({
-                id: foundAdmin.id, 
-                name: "Đức Kiên (Admin)",
-                shortName: "AD", 
-                role: "Host",
-                tags: ['admin'] // Quan trọng để ChatGroup nhận diện
-            });
-        } else {
-            // Fallback nếu chưa tạo nick admin
-            setAdminUser({
-                id: 'admin-host-id',
-                name: 'Đức Kiên',
-                shortName: 'DK',
-                tags: ['admin']
-            });
-        }
+        const adminData = foundAdmin ? {
+            id: foundAdmin.id, 
+            name: foundAdmin.name,
+            avatar_url: foundAdmin.avatar_url,
+            shortName: foundAdmin.name?.charAt(0).toUpperCase() || "AD", 
+            role: "Host",
+            tags: foundAdmin.tags 
+        } : { id: 'admin-host-id', name: 'Đức Kiên', avatar_url: null, shortName: 'DK', tags: ['admin'] };
 
-        // --- B. TẠO LIST NHÓM CHAT ---
-        // Lấy tất cả các tag xuất hiện trong danh sách khách mời
+        setAdminUser(adminData);
+
+        // Tạo danh sách nhóm
         const tags = new Set<string>(['general']);
         guestsData.forEach((g: any) => {
             if (g.tags && Array.isArray(g.tags)) {
-                g.tags.forEach((t: string) => {
-                    if (t !== 'admin') tags.add(t); 
-                });
+                g.tags.forEach((t: string) => { if (t !== 'admin') tags.add(t); });
             }
         });
 
-        // Convert sang object đầy đủ thông tin (Name, Avatar)
         const formattedGroups: AdminGroupInfo[] = Array.from(tags).map(tag => {
             const info = groupsInfoMap[tag];
             return {
@@ -118,50 +139,85 @@ export default function AdminPage() {
                 avatar_url: info?.avatar_url
             };
         });
-
         setChatGroups(formattedGroups);
+
+        // Kiểm tra tin nhắn chưa đọc ban đầu
+        const unreadTags: string[] = [];
+        await Promise.all(formattedGroups.map(async (group) => {
+            const { data: member } = await supabase.from('group_members')
+                .select('last_viewed_at')
+                .eq('guest_id', adminData.id)
+                .eq('group_tag', group.tag)
+                .single();
+            
+            const lastViewed = member?.last_viewed_at || '2000-01-01T00:00:00.000Z';
+            const { count } = await supabase.from('messages')
+                .select('*', { count: 'exact', head: true })
+                .eq('group_tag', group.tag)
+                .gt('created_at', lastViewed)
+                .neq('sender_id', adminData.id);
+            
+            if (count && count > 0) unreadTags.push(group.tag);
+        }));
+        setUnreadGroupTags(unreadTags);
     }
 
     if (confessionsData) setConfessions(confessionsData);
     setLoading(false);
   };
 
-  // --- TÍNH TOÁN THỐNG KÊ ---
+  // --- 3. REALTIME LISTENER CHO ADMIN ---
+  useEffect(() => {
+    if (!isAuthenticated || !adminUser) return;
+
+    const channel = supabase.channel('admin-global-chat-listener')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
+          const newMsg = payload.new;
+          
+          // Chỉ báo khi người khác nhắn
+          if (newMsg.sender_id !== String(adminUser.id)) {
+              playNotiSound(); // Phát chuông
+
+              // Nếu không phải nhóm đang mở, hiện chấm đỏ
+              if (selectedGroup !== newMsg.group_tag) {
+                  setUnreadGroupTags(prev => prev.includes(newMsg.group_tag) ? prev : [...prev, newMsg.group_tag]);
+              } else {
+                  // Nếu đang mở nhóm đó, tự động mark as read trong DB
+                  markAsRead(newMsg.group_tag);
+              }
+          }
+      }).subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [isAuthenticated, adminUser, selectedGroup]);
+
+  // --- THỐNG KÊ ---
   const realGuests = guests.filter(g => !g.tags?.includes('admin'));
   const totalGuests = realGuests.length;
   const confirmedGuests = realGuests.filter(g => g.is_confirmed && g.attendance === 'Có tham dự').length;
   const declinedGuests = realGuests.filter(g => g.is_confirmed && g.attendance?.includes('bận')).length;
   const waitingGuests = totalGuests - confirmedGuests - declinedGuests;
 
-  // --- GIAO DIỆN ĐĂNG NHẬP ---
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-black flex flex-col items-center justify-center p-4 font-sans">
         <div className="w-full max-w-sm bg-[#111] border border-[#333] p-8 rounded-2xl text-center space-y-6 shadow-2xl">
-          <div className="w-16 h-16 bg-[#d4af37]/10 rounded-full flex items-center justify-center mx-auto border border-[#d4af37]/30 animate-pulse">
-            <Lock className="text-[#d4af37]" size={32} />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold text-white uppercase tracking-widest">Khu vực Admin</h1>
-            <p className="text-gray-500 text-xs mt-2">Chỉ dành cho chủ tiệc</p>
-          </div>
+          <Lock className="text-[#d4af37] mx-auto" size={32} />
+          <h1 className="text-xl font-bold text-white uppercase tracking-widest">Khu vực Admin</h1>
           <form onSubmit={handleLogin} className="space-y-4">
             <input 
               type="password" value={pin} onChange={(e) => setPin(e.target.value)} 
               placeholder="Nhập mã PIN..." 
-              className="w-full bg-[#0a0a0a] border border-[#333] text-white text-center text-2xl tracking-[0.5em] p-3 rounded-xl focus:border-[#d4af37] focus:outline-none transition-colors"
+              className="w-full bg-[#0a0a0a] border border-[#333] text-white text-center text-2xl tracking-[0.5em] p-3 rounded-xl focus:border-[#d4af37] outline-none"
               autoFocus
             />
-            <button className="w-full bg-[#d4af37] text-black font-bold py-3 rounded-xl hover:bg-[#b89628] transition-transform active:scale-95">
-              MỞ KHÓA
-            </button>
+            <button className="w-full bg-[#d4af37] text-black font-bold py-3 rounded-xl hover:bg-[#b89628] active:scale-95 transition-all">MỞ KHÓA</button>
           </form>
         </div>
       </div>
     );
   }
 
-  // --- GIAO DIỆN DASHBOARD ---
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white font-sans pb-20">
       
@@ -182,9 +238,9 @@ export default function AdminPage() {
         
         {/* 1. THỐNG KÊ */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <StatCard label="Tổng khách mời" value={totalGuests} icon={<Users size={20}/>} color="text-blue-400" bg="bg-blue-400/10" />
-          <StatCard label="Sẽ tham gia" value={confirmedGuests} icon={<CheckCircle size={20}/>} color="text-green-400" bg="bg-green-400/10" />
-          <StatCard label="Bận / Từ chối" value={declinedGuests} icon={<XCircle size={20}/>} color="text-red-400" bg="bg-red-400/10" />
+          <StatCard label="Tổng khách" value={totalGuests} icon={<Users size={20}/>} color="text-blue-400" bg="bg-blue-400/10" />
+          <StatCard label="Tham dự" value={confirmedGuests} icon={<CheckCircle size={20}/>} color="text-green-400" bg="bg-green-400/10" />
+          <StatCard label="Từ chối" value={declinedGuests} icon={<XCircle size={20}/>} color="text-red-400" bg="bg-red-400/10" />
           <StatCard label="Chưa trả lời" value={waitingGuests} icon={<Loader2 size={20}/>} color="text-yellow-400" bg="bg-yellow-400/10" />
         </div>
 
@@ -192,37 +248,29 @@ export default function AdminPage() {
         <div className="flex gap-2 border-b border-[#333] overflow-x-auto pb-1">
             <TabButton active={activeTab === 'overview'} onClick={() => setActiveTab('overview')} label="Danh sách khách" />
             <TabButton active={activeTab === 'wishes'} onClick={() => setActiveTab('wishes')} label={`Lưu bút (${confessions.length})`} />
-            <TabButton active={activeTab === 'chat'} onClick={() => setActiveTab('chat')} label="Tin nhắn Nhóm" />
+            <TabButton active={activeTab === 'chat'} onClick={() => setActiveTab('chat')} label="Kênh Chat Nhóm" />
         </div>
 
-        {/* 3. NỘI DUNG TAB */}
-        
         {/* --- TAB: OVERVIEW --- */}
         {activeTab === 'overview' && (
-           <div className="bg-[#111] border border-[#333] rounded-2xl overflow-hidden shadow-xl">
+           <div className="bg-[#111] border border-[#333] rounded-2xl overflow-hidden shadow-xl animate-in fade-in">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm text-left">
                   <thead className="text-xs text-gray-500 uppercase bg-[#1a1a1a]">
-                    <tr>
-                      <th className="px-6 py-4">Tên khách</th>
-                      <th className="px-6 py-4">Nhóm (Tag)</th>
-                      <th className="px-6 py-4">Trạng thái</th>
-                      <th className="px-6 py-4">Lời nhắn</th>
-                    </tr>
+                    <tr><th className="px-6 py-4">Tên khách</th><th className="px-6 py-4">Nhóm</th><th className="px-6 py-4">Trạng thái</th><th className="px-6 py-4">Lời nhắn</th></tr>
                   </thead>
                   <tbody className="divide-y divide-[#222]">
                     {realGuests.map((guest) => (
                       <tr key={guest.id} className="hover:bg-[#1a1a1a]/50 transition-colors">
-                        <td className="px-6 py-4 font-bold text-white">{guest.name}</td>
-                        <td className="px-6 py-4"><span className="bg-[#222] px-2 py-1 rounded text-[10px] text-gray-400 border border-[#333] uppercase">{guest.tags?.[0] || 'N/A'}</span></td>
-                        <td className="px-6 py-4">
-                          {guest.is_confirmed ? (
-                            guest.attendance === 'Có tham dự' 
-                              ? <span className="text-green-500 font-bold bg-green-500/10 px-2 py-1 rounded text-xs border border-green-500/20">Tham dự</span>
-                              : <span className="text-red-500 font-bold bg-red-500/10 px-2 py-1 rounded text-xs border border-red-500/20">Bận</span>
-                          ) : <span className="text-gray-500 italic text-xs">Waiting</span>}
+                        <td className="px-6 py-4 font-bold text-white flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full border border-[#333] overflow-hidden shrink-0">
+                                {guest.avatar_url ? <img src={guest.avatar_url} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center bg-[#222] text-[10px]">{guest.name?.charAt(0)}</div>}
+                            </div>
+                            {guest.name}
                         </td>
-                        <td className="px-6 py-4 text-gray-400 italic max-w-xs truncate">{guest.wish || "-"}</td>
+                        <td className="px-6 py-4"><span className="bg-[#222] px-2 py-1 rounded text-[10px] text-gray-400 border border-[#333] uppercase">{guest.tags?.[0] || 'N/A'}</span></td>
+                        <td className="px-6 py-4">{guest.is_confirmed ? (guest.attendance === 'Có tham dự' ? <span className="text-green-500">Có tham dự</span> : <span className="text-red-500">Từ chối</span>) : <span className="text-gray-600 italic">Chưa trả lời</span>}</td>
+                        <td className="px-6 py-4 text-gray-400 italic truncate max-w-xs">{guest.wish || "-"}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -231,69 +279,55 @@ export default function AdminPage() {
            </div>
         )}
 
-        {/* --- TAB: WISHES --- */}
-        {activeTab === 'wishes' && (
-           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-             {confessions.length === 0 ? <div className="col-span-full text-center py-20 text-gray-500 italic">Chưa có lưu bút nào.</div> :
-               confessions.map((item) => (
-                 <div key={item.id} className="bg-[#111] border border-[#333] rounded-2xl overflow-hidden shadow-lg flex flex-col">
-                     {item.image_url && <div className="relative h-48 bg-[#000]"><img src={item.image_url} alt="Kỷ niệm" className="w-full h-full object-cover" /></div>}
-                     <div className="p-4 flex-1 flex flex-col">
-                        <div className="flex items-center gap-2 mb-3">
-                           <div className="w-8 h-8 rounded-full bg-[#d4af37] text-black flex items-center justify-center font-bold text-xs">{item.guests?.name?.charAt(0) || "?"}</div>
-                           <div><p className="font-bold text-sm text-[#fadd7d]">{item.guests?.name || "Ẩn danh"}</p><p className="text-[10px] text-gray-500">{new Date(item.created_at).toLocaleString('vi-VN')}</p></div>
-                        </div>
-                        {item.content && <div className="bg-[#1a1a1a] p-3 rounded-xl text-gray-300 text-sm italic relative"><MessageSquare size={12} className="absolute -top-1 -left-1 text-[#333] fill-[#333]" />"{item.content}"</div>}
-                     </div>
-                 </div>
-               ))
-             }
-           </div>
-        )}
-
-        {/* --- TAB: CHAT ADMIN (UPDATED) --- */}
+        {/* --- TAB: CHAT ADMIN (Tích hợp thông báo) --- */}
         {activeTab === 'chat' && (
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 h-[600px]">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 h-[70vh] animate-in fade-in">
                 {/* 1. CỘT TRÁI: DANH SÁCH NHÓM */}
-                <div className="md:col-span-1 bg-[#111] border border-[#333] rounded-2xl p-4 flex flex-col h-full">
-                    <h3 className="text-[#d4af37] font-bold text-xs uppercase tracking-widest mb-4 flex items-center gap-2">
+                <div className="md:col-span-1 bg-[#111] border border-[#333] rounded-2xl p-4 flex flex-col h-full overflow-hidden">
+                    <h3 className="text-[#d4af37] font-bold text-xs uppercase mb-4 flex items-center gap-2">
                         <MessageCircle size={14} /> Chọn Nhóm
                     </h3>
-                    <div className="space-y-2 overflow-y-auto flex-1 pr-2">
-                        {chatGroups.map(group => (
-                            <button key={group.tag} onClick={() => setSelectedGroup(group.tag)} className={`w-full text-left px-4 py-3 rounded-xl text-sm font-bold transition-all flex items-center gap-3 group ${selectedGroup === group.tag ? 'bg-[#d4af37] text-black shadow-lg shadow-[#d4af37]/20' : 'bg-[#1a1a1a] text-gray-400 hover:bg-[#222] hover:text-white'}`}>
-                                <div className={`w-8 h-8 rounded-full border border-current flex items-center justify-center overflow-hidden shrink-0 ${selectedGroup === group.tag ? 'border-black/20' : 'border-gray-600'}`}>
-                                    {group.avatar_url ? <img src={group.avatar_url} className="w-full h-full object-cover"/> : <Hash size={14}/>}
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                    <p className="truncate">{group.name}</p>
-                                </div>
-                            </button>
-                        ))}
+                    <div className="space-y-2 overflow-y-auto flex-1 pr-2 custom-scrollbar">
+                        {chatGroups.map(group => {
+                            const isUnread = unreadGroupTags.includes(group.tag);
+                            return (
+                                <button 
+                                    key={group.tag} 
+                                    onClick={() => { setSelectedGroup(group.tag); markAsRead(group.tag); }} 
+                                    className={`w-full text-left px-4 py-3 rounded-xl text-sm font-bold transition-all flex items-center gap-3 relative border ${selectedGroup === group.tag ? 'bg-[#d4af37] text-black border-transparent shadow-lg shadow-[#d4af37]/20' : 'bg-[#1a1a1a] text-gray-400 border-transparent hover:bg-[#222]'}`}
+                                >
+                                    <div className={`w-8 h-8 rounded-lg border border-current flex items-center justify-center overflow-hidden shrink-0 ${selectedGroup === group.tag ? 'border-black/20' : 'border-gray-700 bg-[#111]'}`}>
+                                        {group.avatar_url ? <img src={group.avatar_url} className="w-full h-full object-cover"/> : <Hash size={14}/>}
+                                    </div>
+                                    <span className="truncate flex-1">{group.name}</span>
+                                    
+                                    {/* Chấm thông báo chưa đọc */}
+                                    {isUnread && (
+                                        <div className="w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(239,68,68,0.8)]"></div>
+                                    )}
+                                </button>
+                            );
+                        })}
                     </div>
                 </div>
 
                 {/* 2. CỘT PHẢI: KHUNG CHAT */}
                 <div className="md:col-span-3 h-full flex flex-col">
                     <div className="flex-1 border border-[#333] rounded-2xl overflow-hidden bg-[#111] shadow-2xl relative">
-                        <div className="absolute top-0 left-0 right-0 z-20 bg-[#1a1a1a]/90 backdrop-blur-sm p-3 border-b border-[#333] flex justify-between px-4 items-center">
-                            <span className="text-xs text-gray-500">Đang chat tại: <span className="text-[#d4af37] font-bold text-sm">#{selectedGroup}</span></span>
-                            <span className="text-[10px] bg-[#333] px-2 py-0.5 rounded text-gray-300 border border-[#444]">Admin Mode</span>
+                        <div className="absolute top-0 left-0 right-0 z-20 bg-[#1a1a1a]/95 backdrop-blur-sm p-3 border-b border-[#333] flex justify-between px-4 items-center">
+                            <span className="text-xs text-gray-500">Kênh: <span className="text-[#d4af37] font-bold text-sm">#{selectedGroup}</span></span>
+                            <span className="text-[10px] bg-red-500/20 px-2 py-0.5 rounded text-red-400 border border-red-500/30 font-bold uppercase">Admin View</span>
                         </div>
                         <div className="pt-10 h-full">
                             {adminUser ? (
                                 <ChatGroup 
                                     currentUser={adminUser} 
                                     groupTag={selectedGroup} 
-                                    onBack={() => {}} // Admin desktop không cần back
-                                    onLeaveGroup={() => {}} // Admin không được rời nhóm ở đây
+                                    onBack={() => {}} 
+                                    onLeaveGroup={() => {}} 
                                 />
                             ) : (
-                                <div className="h-full flex flex-col items-center justify-center text-gray-500 p-4 text-center">
-                                    <Loader2 size={32} className="animate-spin text-[#d4af37] mb-2"/>
-                                    <p>Đang tìm nick Admin...</p>
-                                    <p className="text-xs text-red-400 mt-2">Đảm bảo bạn đã có user với tag 'admin' trong Database.</p>
-                                </div>
+                                <div className="h-full flex flex-col items-center justify-center"><Loader2 className="animate-spin text-[#d4af37]" /></div>
                             )}
                         </div>
                     </div>
@@ -301,17 +335,36 @@ export default function AdminPage() {
             </div>
         )}
 
+        {/* --- TAB: WISHES --- */}
+        {activeTab === 'wishes' && (
+           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 animate-in slide-in-from-bottom-4">
+             {confessions.map((item) => (
+                 <div key={item.id} className="bg-[#111] border border-[#333] rounded-2xl overflow-hidden p-4">
+                     <div className="flex items-center gap-2 mb-3">
+                        <div className="w-8 h-8 rounded-full bg-[#d4af37] text-black flex items-center justify-center font-bold text-xs overflow-hidden">
+                            {item.guests?.avatar_url ? <img src={item.guests.avatar_url} className="w-full h-full object-cover"/> : (item.guests?.name?.charAt(0) || "?")}
+                        </div>
+                        <p className="font-bold text-sm text-[#fadd7d]">{item.guests?.name || "Ẩn danh"}</p>
+                     </div>
+                     {item.image_url && <img src={item.image_url} className="w-full h-40 object-cover rounded-lg mb-3" alt="Memory" />}
+                     <div className="bg-[#1a1a1a] p-3 rounded-xl border border-[#222]">
+                        <p className="text-gray-300 text-sm italic">"{item.content}"</p>
+                     </div>
+                 </div>
+             ))}
+           </div>
+        )}
+
       </div>
     </div>
   );
 }
 
-// --- Component Phụ ---
 function StatCard({ label, value, icon, color, bg }: any) {
   return (
     <div className="bg-[#111] border border-[#333] p-4 rounded-2xl flex items-center gap-4">
       <div className={`w-10 h-10 rounded-full flex items-center justify-center ${bg} ${color}`}>{icon}</div>
-      <div><p className="text-gray-500 text-[10px] uppercase tracking-wider">{label}</p><p className="text-2xl font-bold text-white">{value}</p></div>
+      <div><p className="text-gray-500 text-[10px] uppercase tracking-wider">{label}</p><p className="text-xl font-bold text-white">{value}</p></div>
     </div>
   );
 }
