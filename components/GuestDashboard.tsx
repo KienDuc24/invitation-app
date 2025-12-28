@@ -1367,18 +1367,60 @@ export default function GuestDashboard({ guest }: DashboardProps) {
     setNotification(null);
   };
 
+  // --- FULLSCREEN MODE EFFECT ---
+  useEffect(() => {
+    if (activeTab === 'card') {
+      // Enter fullscreen when opening card tab
+      document.documentElement.requestFullscreen().catch(() => {
+        console.warn('Fullscreen request failed');
+      });
+    } else {
+      // Exit fullscreen when leaving card tab
+      if (document.fullscreenElement) {
+        document.exitFullscreen().catch(() => {
+          console.warn('Exit fullscreen failed');
+        });
+      }
+    }
+  }, [activeTab]);
+
   return (
     <>
       {activeTab === 'card' ? (
-        // Hiển thị thiệp khi tab là 'card'
-        <MobileInvitation 
-          guestName={guest.name} 
-          guestId={guest.id} 
-          isConfirmed={true} 
-          initialAttendance={guest.attendance} 
-          initialWish={guest.wish} 
-          onTabChange={(tab) => setActiveTab(tab)} // Nhận callback đóng thiệp
-        />
+        // Hiển thị thiệp khi tab là 'card' - Fullscreen wrapper
+        <div 
+          className="fixed z-[99999] bg-[#050505] overflow-hidden"
+          style={{
+            width: '100vw',
+            height: '100vh',
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+          }}
+        >
+          <style>{`
+            html, body {
+              overflow: hidden !important;
+              width: 100vw !important;
+              height: 100vh !important;
+              margin: 0 !important;
+              padding: 0 !important;
+              position: fixed !important;
+              top: 0 !important;
+              left: 0 !important;
+            }
+          `}</style>
+          <MobileInvitation 
+            guestName={guest.name} 
+            guestId={guest.id} 
+            isConfirmed={true} 
+            initialAttendance={guest.attendance} 
+            initialWish={guest.wish} 
+            onTabChange={(tab) => setActiveTab(tab)}
+          />
+        </div>
       ) : (
         <div 
             className="min-h-screen bg-[#0a0a0a] text-white pb-28 font-sans overflow-x-hidden relative"
@@ -2204,14 +2246,16 @@ export default function GuestDashboard({ guest }: DashboardProps) {
         </div>
       )}
 
-      {/* BOTTOM NAV */}
-      <div className="fixed bottom-6 left-6 right-6 z-50">
-        <div className="bg-[#111]/90 backdrop-blur-xl border border-[#333] rounded-2xl p-2 flex justify-between shadow-2xl max-w-md mx-auto">
-            <NavButton active={activeTab === 'wish'} icon={<Ticket size={20} />} label="Lưu bút" onClick={() => setActiveTab('wish')} />
-            <NavButton active={activeTab === 'chat'} icon={<Users size={20} />} label="Kết nối" onClick={() => setActiveTab('chat')} badge={unreadCount} />
-            <NavButton active={activeTab === 'card'} icon={<ImagePlus size={20} />} label="Xem thiệp" onClick={() => setActiveTab('card')} />
+      {/* BOTTOM NAV - Ẩn khi ở tab 'card' */}
+      {activeTab !== 'card' && (
+        <div className="fixed bottom-6 left-6 right-6 z-50 animate-in slide-in-from-bottom-4 duration-300">
+          <div className="bg-[#111]/90 backdrop-blur-xl border border-[#333] rounded-2xl p-2 flex justify-between shadow-2xl max-w-md mx-auto transition-all">
+              <NavButton active={activeTab === 'wish'} icon={<Ticket size={20} />} label="Lưu bút" onClick={() => setActiveTab('wish')} />
+              <NavButton active={activeTab === 'chat'} icon={<Users size={20} />} label="Kết nối" onClick={() => setActiveTab('chat')} badge={unreadCount} />
+              <NavButton active={false} icon={<ImagePlus size={20} />} label="Xem thiệp" onClick={() => setActiveTab('card')} />
+          </div>
         </div>
-      </div>
+      )}
     </>
   );
 }

@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
-import { X, Send, Loader2, Sparkles, MapPin, ZoomIn } from "lucide-react"; 
+import { Loader2, Send, Sparkles, X, ZoomIn } from "lucide-react";
 import Image from "next/image";
+import { useEffect, useRef, useState } from "react";
 
 // ... (Giữ nguyên constant CATMI_EXPRESSIONS) ...
 const CATMI_EXPRESSIONS: Record<string, string> = {
@@ -162,7 +162,7 @@ export default function CatmiChat({ guestName, guestStatus, guestTags, guestInfo
           className="group relative w-16 h-16 bg-white rounded-full shadow-xl flex items-center justify-center transition-transform hover:scale-110 border-2 border-orange-400 overflow-hidden"
         >
           <div className="w-full h-full relative">
-            <Image src={CATMI_EXPRESSIONS[currentMood] || CATMI_EXPRESSIONS['default']} alt="Catmi" fill className="object-cover" sizes="64px" unoptimized />
+            <Image src={CATMI_EXPRESSIONS[currentMood] || CATMI_EXPRESSIONS['default']} alt="Catmi" fill className="object-cover" sizes="64px" unoptimized loading="eager" />
           </div>
         </button>
       )}

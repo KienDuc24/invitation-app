@@ -28,17 +28,19 @@ export default async function GuestPage({ params }: GuestPageProps) {
   if (!guest) return notFound();
 
   const isConfirmed = guest.isConfirmed || guest.is_confirmed;
+  // Chỉ cho phép vào dashboard nếu đã vote AND chọn "Có tham dự"
+  const canAccessDashboard = isConfirmed && guest.attendance === "Có tham dự";
 
   return (
     <>
       {/* 1. Giao diện chính */}
-      {isConfirmed ? (
+      {canAccessDashboard ? (
         <GuestDashboard guest={guest} />
       ) : (
         <MobileInvitation 
           guestName={guest.name} 
           guestId={guest.id}
-          isConfirmed={isConfirmed}
+          isConfirmed={false}
           initialAttendance={guest.attendance}
           initialWish={guest.wish}
         />

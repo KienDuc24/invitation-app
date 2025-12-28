@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Users, Hash, Sparkles, ChevronRight, Lock, Loader2, Star, MessageCircle, Shield } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { ChevronRight, Hash, Loader2, Lock, MessageCircle, Shield, Sparkles, Star, Users } from "lucide-react";
+import { useEffect, useState } from "react";
 
 // 1. CẤU HÌNH THÔNG TIN CÁC NHÓM CỐ ĐỊNH
 const KNOWN_GROUPS: Record<string, any> = {
@@ -17,6 +17,7 @@ interface SuggestionPerson {
   name: string;
   is_confirmed: boolean;
   mutual_tags: string[];
+  tags: string[];
 }
 
 export interface ChatGroupInfo {
@@ -29,6 +30,12 @@ export interface ChatGroupInfo {
   is_joined: boolean;
   unread_count: number;
   avatar_url?: string;
+}
+
+interface PersonModalData {
+  id: string;
+  name: string;
+  tags: string[];
 }
 
 // --- UPDATE 1: Thêm unreadGroupTags vào interface ---
@@ -52,6 +59,8 @@ export default function NetworkSection({
   const [people, setPeople] = useState<SuggestionPerson[]>([]);
   const [groups, setGroups] = useState<ChatGroupInfo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedPerson, setSelectedPerson] = useState<PersonModalData | null>(null);
+  const [personGroups, setPersonGroups] = useState<ChatGroupInfo[]>([]);
 
   const getGroupMetadata = (tag: string) => {
     if (KNOWN_GROUPS[tag]) return KNOWN_GROUPS[tag];
@@ -145,6 +154,52 @@ export default function NetworkSection({
 
   if (loading) return <div className="py-10 flex justify-center"><Loader2 className="animate-spin text-[#d4af37]" /></div>;
 
+  const handlePersonClick = async (person: SuggestionPerson) => {
+    setSelectedPerson({
+      id: person.id,
+      name: person.name,
+      tags: person.tags || []
+    });
+
+    // Lấy các nhóm chung (mutual groups) - nhóm mà cả hai người đều có tags
+    const commonTags = (person.tags || []).filter(tag => currentTags.includes(tag));
+    
+    if (commonTags.length === 0) {
+      setPersonGroups([]);
+      return;
+    }
+
+    const { data: customGroups } = await supabase.from('chat_groups').select('*').in('tag', commonTags);
+    const customMap: Record<string, any> = {};
+    customGroups?.forEach((g: any) => { customMap[g.tag] = g; });
+
+    const groupPromises = commonTags.map(async (tag) => {
+        const defaultMeta = getGroupMetadata(tag);
+        const customMeta = customMap[tag];
+
+        const finalName = customMeta?.name || defaultMeta.name;
+        const finalAvatar = customMeta?.avatar_url;
+        const finalDesc = customMeta?.description || defaultMeta.desc; 
+
+        const { count: memberCount } = await supabase.from('group_members').select('*', { count: 'exact', head: true }).eq('group_tag', tag);
+
+        return {
+            id: `g-${tag}`,
+            name: finalName,
+            desc: finalDesc,
+            icon: defaultMeta.icon,
+            tag_identifier: tag,
+            member_count: memberCount || 0,
+            is_joined: joinedGroups.includes(tag),
+            unread_count: 0,
+            avatar_url: finalAvatar 
+        };
+    });
+
+    const resolvedGroups = await Promise.all(groupPromises);
+    setPersonGroups(resolvedGroups);
+  };
+
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-right-5 duration-500">
       
@@ -152,20 +207,23 @@ export default function NetworkSection({
       {people.length > 0 && (
         <div className="space-y-3">
             <h3 className="text-[#fadd7d] text-[10px] font-bold uppercase tracking-widest flex items-center gap-1.5 px-1">
-                <Sparkles size={12} className="text-yellow-400" /> Có thể bạn quen
+                <Sparkles size={12} className="text-yellow-400" /> Có thể bạn biết
             </h3>
             <div className="flex gap-3 overflow-x-auto pb-2 pt-1 px-1 snap-x scroll-smooth scrollbar-hide">
                 <style jsx>{`div::-webkit-scrollbar { display: none; }`}</style>
                 {people.map((person) => (
-                    <div key={person.id} className="snap-start flex-shrink-0 w-24 bg-[#1a1a1a] border border-[#333] rounded-xl p-3 flex flex-col items-center gap-2 relative group hover:border-[#d4af37]/50 transition-all shadow-sm">
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-gray-700 to-gray-800 flex items-center justify-center text-xs font-bold text-gray-300 border border-gray-600">
-                            {person.name.charAt(0)}
+                    <button
+                        key={person.id}
+                        onClick={() => handlePersonClick(person)}
+                        className="snap-start flex-shrink-0 w-24 bg-[#1a1a1a] border border-[#333] hover:border-[#d4af37]/50 rounded-xl p-3 flex flex-col items-center gap-2 transition-all shadow-sm active:scale-95 cursor-pointer"
+                    >
+                        <div className="w-12 h-12 rounded-full bg-cover overflow-hidden border border-[#d4af37]/30"
+                             style={{backgroundImage: `url('https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(person.name)}&backgroundColor=d4af37,111111')`}}>
                         </div>
                         <div className="text-center w-full">
                             <p className="text-xs font-bold text-white truncate w-full">{person.name}</p>
-                            <p className="text-[9px] text-gray-500 truncate mt-0.5">{person.mutual_tags[0]}</p>
                         </div>
-                    </div>
+                    </button>
                 ))}
             </div>
         </div>
@@ -228,6 +286,69 @@ export default function NetworkSection({
             })}
          </div>
       </div>
+
+      {/* MODAL THÔNG TIN NGƯỜI DÙNG */}
+      {selectedPerson && (
+        <div 
+          className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setSelectedPerson(null)}
+        >
+          <div 
+            className="bg-[#111] border border-[#333] rounded-2xl max-w-sm w-full shadow-2xl p-6 animate-in zoom-in-95"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex flex-col items-center gap-4 text-center mb-6">
+              <img
+                src={`https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(selectedPerson.name)}&backgroundColor=d4af37,111111`}
+                alt={selectedPerson.name}
+                className="w-20 h-20 rounded-full border-2 border-[#d4af37]"
+              />
+              <div>
+                <h2 className="text-xl font-bold text-white">{selectedPerson.name}</h2>
+                <p className="text-sm text-gray-400 mt-1">Tham gia {personGroups.length} nhóm</p>
+              </div>
+            </div>
+
+            {/* Groups */}
+            <div className="space-y-2 max-h-[300px] overflow-y-auto mb-6">
+              <p className="text-xs font-bold text-[#d4af37] uppercase tracking-wider px-2">Nhóm của người dùng</p>
+              {personGroups.length > 0 ? (
+                <div className="space-y-2">
+                  {personGroups.map((group) => {
+                    const Icon = group.icon || Hash;
+                    return (
+                      <div key={group.id} className="flex items-center gap-3 bg-[#1a1a1a] border border-[#333] rounded-lg p-3 hover:border-[#d4af37]/30 transition-all">
+                        <div className="w-10 h-10 rounded-lg bg-[#222] flex items-center justify-center text-[#d4af37] flex-shrink-0 border border-[#333]">
+                          {group.avatar_url ? (
+                            <img src={group.avatar_url} className="w-full h-full object-cover rounded-lg" />
+                          ) : (
+                            <Icon size={18} />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-bold text-white truncate">{group.name}</p>
+                          <p className="text-xs text-gray-500">{group.member_count} thành viên</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-xs text-gray-500 text-center py-4">Chưa tham gia nhóm nào</p>
+              )}
+            </div>
+
+            {/* Close Button */}
+            <button
+              onClick={() => setSelectedPerson(null)}
+              className="w-full bg-[#d4af37] hover:bg-[#e6c200] text-black font-bold py-2 rounded-lg transition-colors"
+            >
+              Đóng
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
