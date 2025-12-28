@@ -44,6 +44,18 @@ export default function AdminPage() {
   const [selectedGroup, setSelectedGroup] = useState<string>('general');
   const [unreadGroupTags, setUnreadGroupTags] = useState<string[]>([]);
   
+  const [showImagePreviewModal, setShowImagePreviewModal] = useState(false);
+  const [previewImages, setPreviewImages] = useState<string[]>([]);
+  const [currentPreviewIndex, setCurrentPreviewIndex] = useState(0);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  
+  const [commentsByConfession, setCommentsByConfession] = useState<Record<string, any[]>>({});
+  const [likersByConfession, setLikersByConfession] = useState<Record<string, any[]>>({});
+  const [likesCounts, setLikesCounts] = useState<Record<string, number>>({});
+  const [showLikersModal, setShowLikersModal] = useState(false);
+  const [selectedConfessionForLikers, setSelectedConfessionForLikers] = useState<any>(null);
+  const [commentInput, setCommentInput] = useState<Record<string, string>>({});
+  
   const [eventInfo, setEventInfo] = useState({
     time_info: "",
     location_info: "",
@@ -81,6 +93,78 @@ export default function AdminPage() {
     } catch (e) { console.error(e); }
   };
 
+  // Helper function to parse image URLs (handles both old single URL and new JSON array format)
+  const parseImageUrls = (imageData: string | null): string[] => {
+    if (!imageData) return [];
+    try {
+      const parsed = JSON.parse(imageData);
+      return Array.isArray(parsed) ? parsed : [imageData];
+    } catch {
+      return imageData ? [imageData] : [];
+    }
+  };
+
+  // Fetch comments and likers when modal opens
+  useEffect(() => {
+    if (selectedConfessionDetail) {
+      const fetchData = async () => {
+        console.log('🔄 [Admin Modal Effect] Fetching data for confession:', String(selectedConfessionDetail.id).substring(0, 8));
+        
+        // Fetch comments
+        const { data: comments } = await supabase
+          .from('confession_comments')
+          .select('*, guests(id, name, avatar_url)')
+          .eq('confession_id', selectedConfessionDetail.id)
+          .order('created_at', { ascending: true });
+        
+        console.log('💬 [Admin Modal Effect] Comments fetched:', comments?.length || 0);
+        
+        setCommentsByConfession(prev => ({
+          ...prev,
+          [selectedConfessionDetail.id]: comments || []
+        }));
+
+        // Fetch likers
+        const { data: likes } = await supabase
+          .from('confession_likes')
+          .select('*, guests(id, name, avatar_url)')
+          .eq('confession_id', selectedConfessionDetail.id);
+        
+        console.log('❤️ [Admin Modal Effect] User likes fetched:', likes?.length || 0);
+        
+        let likers: any[] = likes?.map((l: any) => l.guests) || [];
+        
+        // Add admin liker if exists
+        if (selectedConfessionDetail.likes_count > 0 && adminUser) {
+          console.log('✨ [Admin Modal Effect] Adding admin to likers');
+          likers.unshift({
+            id: adminUser.id,
+            name: adminUser.name,
+            avatar_url: adminUser.avatar_url,
+            isAdmin: true
+          });
+        }
+        
+        // Update source of truth array
+        console.log('📊 [Admin Modal Effect] Setting likers, total:', likers.length);
+        setLikersByConfession(prev => ({
+          ...prev,
+          [selectedConfessionDetail.id]: likers
+        }));
+        
+        // ✅ IMPORTANT: Also update likesCounts
+        setLikesCounts(prev => ({
+          ...prev,
+          [selectedConfessionDetail.id]: likers.length
+        }));
+        
+        console.log('✅ [Admin Modal Effect] Data fetched and set');
+      };
+
+      fetchData();
+    }
+  }, [selectedConfessionDetail?.id, adminUser]);
+
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     if (pin === SECRET_PIN) {
@@ -115,10 +199,12 @@ export default function AdminPage() {
     const groupsInfoMap: Record<string, any> = {};
     groupsInfoData?.forEach((g: any) => { groupsInfoMap[g.tag] = g; });
 
+    let adminData: any = null;
+    
     if (guestsData) {
         setGuests(guestsData);
         const foundAdmin = guestsData.find((g: any) => g.tags && g.tags.includes('admin'));
-        const adminData = foundAdmin ? {
+        adminData = foundAdmin ? {
             id: foundAdmin.id, 
             name: foundAdmin.name,
             avatar_url: foundAdmin.avatar_url,
@@ -144,31 +230,187 @@ export default function AdminPage() {
         });
         setChatGroups(formattedGroups);
     }
-    if (confessionsData) setConfessions(confessionsData);
+    // 🔄 Set confessions to state - CRITICAL FIX
+    if (confessionsData) {
+      console.log('📝 [Admin] Confessions fetched:', confessionsData.length);
+      setConfessions(confessionsData);
+    } else {
+      console.log('⚠️ [Admin] No confessions data');
+      setConfessions([]);
+    }
+
+    // Fetch comments and likes for all confessions - batch queries
+    if (confessionsData && adminData) {
+      const confessionIds = confessionsData.map(c => c.id);
+      console.log('🔄 [Admin] Fetching comments and likes for confessions:', confessionIds.length);
+      
+      // Batch fetch ALL comments at once
+      const { data: allComments } = await supabase
+        .from('confession_comments')
+        .select('*, guests(id, name, avatar_url)')
+        .in('confession_id', confessionIds);
+      
+      console.log('💬 [Admin] Comments fetched:', allComments?.length || 0);
+      
+      // Batch fetch ALL likes at once with guest data
+      const { data: allLikes } = await supabase
+        .from('confession_likes')
+        .select('*, guests(id, name, avatar_url)')
+        .in('confession_id', confessionIds);
+      
+      console.log('❤️ [Admin] Likes fetched:', allLikes?.length || 0);
+      
+      // Calculate on client side
+      const commentsMap: Record<string, any[]> = {};
+      const likersByConfessionMap: Record<string, any[]> = {};
+      const likesCountsMap: Record<string, number> = {};
+      const commentsCountMap: Record<string, number> = {};
+      
+      confessionsData.forEach((confession) => {
+        // Get comments for this confession
+        const confComments = allComments?.filter(c => c.confession_id === confession.id) || [];
+        commentsMap[confession.id] = confComments;
+        commentsCountMap[confession.id] = confComments.length + (confession.admin_comment ? 1 : 0);
+
+        // Build likers array with full user data
+        const userLikers = allLikes
+          ?.filter(l => l.confession_id === confession.id)
+          .map((l: any) => l.guests) || [];
+        
+        // Add admin if liked
+        if (confession.likes_count > 0) {
+          const adminLiker = {
+            id: adminData.id,
+            name: adminData.name,
+            avatar_url: adminData.avatar_url,
+            isAdmin: true
+          };
+          likersByConfessionMap[confession.id] = [adminLiker, ...userLikers];
+          likesCountsMap[confession.id] = userLikers.length + 1; // user likes + admin
+          console.log(`👥 [Admin] Confession ${String(confession.id).substring(0, 8)}: ${userLikers.length} users + admin = ${likesCountsMap[confession.id]}`);
+        } else {
+          likersByConfessionMap[confession.id] = userLikers;
+          likesCountsMap[confession.id] = userLikers.length;
+          console.log(`👥 [Admin] Confession ${String(confession.id).substring(0, 8)}: ${userLikers.length} users`);
+        }
+      });
+      
+      console.log('📊 [Admin] Likers map built:', Object.keys(likersByConfessionMap).length);
+      console.log('📊 [Admin] Likes counts:', likesCountsMap);
+      console.log('💬 [Admin] Comments counts:', commentsCountMap);
+      setCommentsByConfession(commentsMap);
+      setLikersByConfession(likersByConfessionMap);
+      setLikesCounts(likesCountsMap);
+      // Store comments count too for display
+    }
+    
+    console.log('✅ [Admin] Data loading complete');
     setLoading(false);
+  };
+
+  const fetchLikers = async (confessionId: string) => {
+    try {
+      console.log('🔄 [Admin fetchLikers] Fetching likers for:', confessionId);
+      
+      const { data: likes } = await supabase
+        .from('confession_likes')
+        .select('*, guests(id, name, avatar_url)')
+        .eq('confession_id', confessionId);
+      
+      console.log('❤️ [Admin fetchLikers] User likes fetched:', likes?.length || 0);
+      
+      let likersList: any[] = likes?.map((l: any) => l.guests) || [];
+      
+      // Add admin liker if exists
+      const confession = confessions.find(c => c.id === confessionId);
+      console.log('🔍 [Admin fetchLikers] Found confession:', confession?.id, 'likes_count:', confession?.likes_count);
+      
+      if (confession?.likes_count > 0 && adminUser) {
+        console.log('✨ [Admin fetchLikers] Adding admin to likers');
+        likersList.unshift({
+          id: 'admin',
+          name: adminUser.name,
+          avatar_url: adminUser.avatar_url,
+          isAdmin: true
+        });
+      } else if (confession?.likes_count > 0 && !adminUser) {
+        console.log('⚠️ [Admin fetchLikers] Admin like flag set but adminUser not loaded');
+      }
+      
+      console.log('📊 [Admin fetchLikers] Final likers list:', likersList.length);
+      setLikersByConfession(prev => ({ ...prev, [confessionId]: likersList }));
+      
+      // Calculate total likes count
+      const totalLikes = likersList.length;
+      console.log('💯 [Admin fetchLikers] Total likes:', totalLikes);
+      setLikesCounts(prev => ({ ...prev, [confessionId]: totalLikes }));
+      
+      console.log('✅ [Admin fetchLikers] Likers fetched and set');
+    } catch (error) {
+      console.error('❌ [Admin fetchLikers] Error:', error);
+    }
+  };
+
+  // Helper function to get like count for a confession
+  const getLikeCount = (confessionId: string): number => {
+    return likesCounts[confessionId] || 0;
+  };
+
+  // Helper function to get comment count for a confession
+  const getCommentCount = (confessionId: string): number => {
+    const confession = confessions.find(c => c.id === confessionId);
+    const userComments = commentsByConfession[confessionId]?.length || 0;
+    const adminComment = confession?.admin_comment ? 1 : 0;
+    return userComments + adminComment;
   };
 
   // --- 3. TƯƠNG TÁC LƯU BÚT ---
   const handleLikeConfession = async (id: string, currentLikes: number) => {
     try {
+      console.log('❤️ [Admin handleLike] Starting like toggle for:', id, 'current:', currentLikes);
+      
       // Toggle: nếu đã like thì unlike, chưa like thì like
       const newLikesCount = (currentLikes || 0) > 0 ? (currentLikes || 0) - 1 : 1;
+      console.log('📊 [Admin handleLike] New likes_count:', newLikesCount);
+      
       const { error } = await supabase.from('confessions').update({ likes_count: newLikesCount }).eq('id', id);
       if (error) throw error;
+      
+      console.log('✅ [Admin handleLike] Updated in DB, updating state');
       setConfessions(prev => prev.map(c => c.id === id ? {...c, likes_count: newLikesCount} : c));
+      console.log('✅ [Admin handleLike] State updated');
     } catch (e) {
-      console.error("Lỗi thả tim:", e);
+      console.error("❌ [Admin handleLike] Error:", e);
       alert("Lỗi cập nhật!");
     }
   };
 
-  const handleCommentConfession = async (id: string) => {
-    const comment = prompt("Nhập phản hồi của bạn:");
-    if (comment === null) return;
+  const handleCommentConfession = async (confessionId: string, content: string) => {
+    if (!content.trim()) return;
     try {
-      const { error } = await supabase.from('confessions').update({ admin_comment: comment }).eq('id', id);
+      const { error } = await supabase.from('confession_comments').insert({
+        confession_id: confessionId,
+        guest_id: adminUser.id,
+        content: content
+      });
       if (error) throw error;
-      setConfessions(prev => prev.map(c => c.id === id ? {...c, admin_comment: comment} : c));
+
+      // Refresh comments
+      const { data: comments } = await supabase
+        .from('confession_comments')
+        .select('*, guests(id, name, avatar_url)')
+        .eq('confession_id', confessionId)
+        .order('created_at', { ascending: true });
+      
+      setCommentsByConfession(prev => ({
+        ...prev,
+        [confessionId]: comments || []
+      }));
+
+      // Update modal if it's open
+      if (selectedConfessionDetail && selectedConfessionDetail.id === confessionId) {
+        setSelectedConfessionDetail({...selectedConfessionDetail});
+      }
     } catch (e) {
       console.error("Lỗi comment:", e);
       alert("Lỗi cập nhật!");
@@ -187,15 +429,64 @@ export default function AdminPage() {
   // --- 4. REALTIME THÔNG BÁO ---
   useEffect(() => {
     if (!isAuthenticated) return;
-    const channel = supabase.channel('admin-global').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
-          if (payload.new.sender_id !== adminUser?.id) {
-              playNotiSound();
-              setUnreadGroupTags(prev => [...new Set([...prev, payload.new.group_tag])]);
-          }
-      }).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'confessions' }, (payload) => {
+    const channel = supabase.channel('admin-global')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
+        if (payload.new.sender_id !== adminUser?.id) {
           playNotiSound();
-          fetchData(); // Reload lưu bút mới
-      }).subscribe();
+          setUnreadGroupTags(prev => [...new Set([...prev, payload.new.group_tag])]);
+        }
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'confessions' }, (payload) => {
+        playNotiSound();
+        fetchData(); // Reload lưu bút mới
+      })
+      // --- REALTIME LIKES ---
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'confession_likes' }, async (payload) => {
+        console.log('➕ [Admin Realtime] User liked:', payload.new.confession_id, 'by:', payload.new.guest_id);
+        
+        // Fetch user data
+        const { data: user } = await supabase
+          .from('guests')
+          .select('id, name, avatar_url')
+          .eq('id', payload.new.guest_id)
+          .single();
+        
+        if (user) {
+          // Add user to likers array
+          setLikersByConfession(prev => ({
+            ...prev,
+            [payload.new.confession_id]: [...(prev[payload.new.confession_id] || []), user]
+          }));
+          
+          // Update like counts
+          setLikesCounts(prev => ({
+            ...prev,
+            [payload.new.confession_id]: ((prev[payload.new.confession_id] || 0) + 1)
+          }));
+          console.log('✨ [Admin Realtime] Updated likers for', payload.new.confession_id);
+        }
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'confession_likes' }, (payload) => {
+        console.log('➖ [Admin Realtime] User unliked:', payload.old.confession_id, 'by:', payload.old.guest_id);
+        
+        // Remove user from likers array
+        setLikersByConfession(prev => {
+          const existing = prev[payload.old.confession_id] || [];
+          const newArray = existing.filter(l => l.id !== payload.old.guest_id);
+          
+          // Update like counts
+          setLikesCounts(prev => ({
+            ...prev,
+            [payload.old.confession_id]: newArray.length
+          }));
+          
+          return {
+            ...prev,
+            [payload.old.confession_id]: newArray
+          };
+        });
+      })
+      .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [isAuthenticated, adminUser]);
 
@@ -254,8 +545,20 @@ export default function AdminPage() {
            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in slide-in-from-bottom-4">
              {confessions.length === 0 ? <p className="text-gray-500 italic text-center col-span-full py-20">Chưa có ai gửi tâm thư...</p> :
                confessions.map((item) => (
-                 <div key={item.id} className="bg-[#111] border border-[#333] rounded-[2rem] overflow-hidden flex flex-col shadow-xl group hover:border-[#d4af37]/40 transition-all cursor-pointer" onClick={() => setSelectedConfessionDetail(item)}>
-                     {item.image_url && <img src={item.image_url} className="w-full h-48 object-cover border-b border-[#222]" alt=""/>}
+                 <div key={item.id} className="bg-[#111] border border-[#333] rounded-[2rem] overflow-hidden flex flex-col shadow-xl group hover:border-[#d4af37]/40 transition-all cursor-pointer" onClick={() => {
+                   setSelectedConfessionDetail(item);
+                   setCurrentImageIndex(0);
+                 }}>
+                     {parseImageUrls(item.image_url).length > 0 && (
+                       <div className="relative bg-black h-48">
+                         <img src={parseImageUrls(item.image_url)[0]} className="w-full h-48 object-cover border-b border-[#222]" alt=""/>
+                         {parseImageUrls(item.image_url).length > 1 && (
+                           <div className="absolute bottom-2 right-2 bg-black/70 text-white px-2 py-1 rounded text-xs font-bold">
+                             {parseImageUrls(item.image_url).length}
+                           </div>
+                         )}
+                       </div>
+                     )}
                      <div className="p-5 flex-1 flex flex-col">
                         <div className="flex items-center justify-between gap-3 mb-4">
                             <div className="flex items-center gap-3">
@@ -273,25 +576,48 @@ export default function AdminPage() {
                                 <span className="text-xs bg-gray-700/40 text-gray-300 px-2 py-1 rounded-full whitespace-nowrap font-bold">🔒 Private</span>
                             )}
                         </div>
-                        <p className="text-gray-300 text-sm italic leading-relaxed mb-6">"{item.content}"</p>
+                        <p className="text-gray-300 text-sm italic leading-relaxed mb-6">{item.content}</p>
                         
-                        {/* Tương tác của Admin */}
-                        <div className="mt-auto pt-4 border-t border-[#222] flex items-center justify-between">
-                            <div className="flex gap-4">
-                                <button onClick={() => handleLikeConfession(item.id, item.likes_count)} className="flex items-center gap-1.5 text-xs font-bold text-gray-400 hover:text-red-500 transition-colors">
-                                    <Heart size={16} className={item.likes_count > 0 ? "fill-red-500 text-red-500" : ""} /> {item.likes_count || 0}
-                                </button>
-                                <button onClick={() => handleCommentConfession(item.id)} className="flex items-center gap-1.5 text-xs font-bold text-gray-400 hover:text-blue-400 transition-colors">
-                                    <MessageCircle size={16} /> Phản hồi
-                                </button>
+                        {/* Social Media Style Footer */}
+                        <div className="mt-auto pt-4 border-t border-[#222] space-y-3">
+                          {/* Interaction Stats */}
+                          <div className="flex items-center justify-between text-xs text-gray-500 font-bold px-0">
+                            <div className="flex items-center gap-1">
+                              <Heart size={14} className="text-red-500" />
+                              <span>{(likesCounts[item.id] || 0) > 0 ? `${likesCounts[item.id]} lượt thích` : 'Chưa có thích'}</span>
                             </div>
+                            <div className="flex items-center gap-1">
+                              <MessageCircle size={14} className="text-blue-400" />
+                              <span>{getCommentCount(item.id)} bình luận</span>
+                            </div>
+                          </div>
+
+                          {/* Action Buttons */}
+                          <div className="flex gap-2">
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleLikeConfession(item.id, item.likes_count);
+                                // Update UI
+                                setConfessions(confessions.map(c => c.id === item.id ? {...c, likes_count: (c.likes_count || 0) > 0 ? (c.likes_count || 0) - 1 : 1} : c));
+                              }} 
+                              className="flex-1 flex items-center justify-center gap-1.5 text-xs font-bold py-2 rounded-lg transition-all bg-red-500/10 text-red-400 hover:bg-red-500/20"
+                            >
+                              <Heart size={14} className={item.likes_count > 0 ? "fill-red-500 text-red-500" : ""} /> 
+                              {item.likes_count > 0 ? 'Đã thích' : 'Thích'}
+                            </button>
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedConfessionDetail(item);
+                                setCurrentImageIndex(0);
+                              }} 
+                              className="flex-1 flex items-center justify-center gap-1.5 text-xs font-bold py-2 rounded-lg transition-all bg-[#d4af37]/10 text-[#d4af37] hover:bg-[#d4af37]/20"
+                            >
+                              <MessageCircle size={14} /> Bình luận
+                            </button>
+                          </div>
                         </div>
-                        {item.admin_comment && (
-                            <div className="mt-4 p-3 bg-black/40 rounded-xl border border-[#d4af37]/20">
-                                <p className="text-[11px] text-[#fadd7d] font-bold uppercase mb-1">Bạn đã phản hồi:</p>
-                                <p className="text-gray-400 text-xs italic">"{item.admin_comment}"</p>
-                            </div>
-                        )}
                      </div>
                  </div>
                ))
@@ -409,15 +735,54 @@ export default function AdminPage() {
             {/* Content */}
             <div className="flex-1 overflow-y-auto flex flex-col">
               {/* Ảnh */}
-              {selectedConfessionDetail.image_url && (
-                <img src={selectedConfessionDetail.image_url} className="w-full h-auto max-h-[50%] object-cover" alt="Kỷ niệm" />
+              {parseImageUrls(selectedConfessionDetail.image_url).length > 0 && (
+                <div className="relative bg-black">
+                  {(() => {
+                    const images = parseImageUrls(selectedConfessionDetail.image_url);
+                    return (
+                      <>
+                        <img 
+                          src={images[currentImageIndex]} 
+                          className="w-full h-auto max-h-[50%] object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                          alt={`Kỷ niệm ${currentImageIndex + 1}`}
+                          onClick={() => {
+                            setPreviewImages(images);
+                            setCurrentPreviewIndex(currentImageIndex);
+                            setShowImagePreviewModal(true);
+                          }}
+                        />
+                        {images.length > 1 && (
+                          <>
+                            <div className="absolute bottom-4 right-4 bg-black/70 text-white px-3 py-1 rounded-full text-xs font-bold">
+                              {currentImageIndex + 1}/{images.length}
+                            </div>
+                            <div className="absolute bottom-4 left-4 flex gap-2">
+                              <button 
+                                onClick={() => setCurrentImageIndex(prev => prev > 0 ? prev - 1 : images.length - 1)}
+                                className="bg-white/20 hover:bg-white/30 text-white px-2 py-1 rounded text-xs font-bold transition-colors"
+                              >
+                                ←
+                              </button>
+                              <button 
+                                onClick={() => setCurrentImageIndex(prev => prev < images.length - 1 ? prev + 1 : 0)}
+                                className="bg-white/20 hover:bg-white/30 text-white px-2 py-1 rounded text-xs font-bold transition-colors"
+                              >
+                                →
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </>
+                    );
+                  })()}
+                </div>
               )}
 
               {/* Nội dung */}
               <div className="p-6 space-y-6 flex-1">
                 <div className="space-y-2">
                   <p className="text-gray-400 text-xs uppercase font-black tracking-widest">Nội dung</p>
-                  <p className="text-gray-100 text-lg leading-relaxed italic">"{selectedConfessionDetail.content}"</p>
+                  <p className="text-gray-100 text-lg leading-relaxed italic">{selectedConfessionDetail.content}</p>
                 </div>
 
                 {/* Thông tin người gửi */}
@@ -435,49 +800,246 @@ export default function AdminPage() {
                   </div>
                 </div>
 
-                {/* Phản hồi hiện tại */}
-                {(selectedConfessionDetail.likes_count > 0 || selectedConfessionDetail.admin_comment) && (
-                  <div className="bg-black/50 p-4 rounded-2xl border border-[#d4af37]/20 space-y-4">
-                    <p className="text-[#d4af37] text-xs font-black uppercase tracking-widest">Phản hồi của bạn</p>
-                    
-                    {selectedConfessionDetail.likes_count > 0 && (
-                      <div className="flex items-center gap-2">
-                        <Heart size={16} className="fill-red-500 text-red-500" />
-                        <span className="text-gray-300 text-sm">Bạn đã thích lưu bút này</span>
-                      </div>
-                    )}
-
-                    {selectedConfessionDetail.admin_comment && (
-                      <div className="space-y-2">
-                        <p className="text-gray-500 text-xs uppercase font-bold">💬 Bình luận:</p>
-                        <p className="text-gray-200 text-sm italic">"{selectedConfessionDetail.admin_comment}"</p>
+                {/* LIKE & COMMENT SECTION - Social Media Style */}
+                <div className="space-y-4 border-t border-[#222] pt-4">
+                  {/* Like Count & Likers */}
+                  <div className="space-y-2">
+                    <div className="text-gray-500 text-xs uppercase font-bold flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          const newAdminLikeStatus = (selectedConfessionDetail.likes_count || 0) > 0 ? 0 : 1;
+                          handleLikeConfession(selectedConfessionDetail.id, selectedConfessionDetail.likes_count);
+                          const newTotalCount = (likesCounts[selectedConfessionDetail.id] || 0) + (newAdminLikeStatus - (selectedConfessionDetail.likes_count || 0));
+                          setSelectedConfessionDetail({...selectedConfessionDetail, likes_count: newAdminLikeStatus});
+                          setLikesCounts(prev => ({...prev, [selectedConfessionDetail.id]: newTotalCount}));
+                          
+                          // Update likersByConfession when admin likes/unlikes
+                          if (newAdminLikeStatus === 1) {
+                            // Admin is liking - add admin to likers list
+                            setLikersByConfession(prev => ({
+                              ...prev,
+                              [selectedConfessionDetail.id]: [
+                                {
+                                  id: adminUser.id,
+                                  name: adminUser.name,
+                                  avatar_url: adminUser.avatar_url,
+                                  isAdmin: true
+                                },
+                                ...(prev[selectedConfessionDetail.id] || []).filter(l => !l.isAdmin)
+                              ]
+                            }));
+                          } else {
+                            // Admin is unliking - remove admin from likers list
+                            setLikersByConfession(prev => ({
+                              ...prev,
+                              [selectedConfessionDetail.id]: (prev[selectedConfessionDetail.id] || []).filter(l => !l.isAdmin)
+                            }));
+                          }
+                        }}
+                        className="text-red-500 hover:scale-110 transition-transform"
+                      >
+                        <Heart size={14} className={selectedConfessionDetail.likes_count > 0 ? "fill-red-500" : ""} /> 
+                      </button>
+                      {(likesCounts[selectedConfessionDetail.id] || 0) > 0 && (
+                        <button
+                          onClick={() => {
+                            console.log('👥 [Admin] Opening likers modal for:', selectedConfessionDetail.id);
+                            console.log('📊 [Admin] Current likersByConfession:', likersByConfession[selectedConfessionDetail.id]);
+                            setSelectedConfessionForLikers(selectedConfessionDetail);
+                            setShowLikersModal(true);
+                          }}
+                          className="hover:text-[#d4af37] transition-colors"
+                        >
+                          {likesCounts[selectedConfessionDetail.id]} {(likesCounts[selectedConfessionDetail.id] || 0) === 1 ? 'lượt thích' : 'lượt thích'}
+                        </button>
+                      )}
+                    </div>
+                    {(likesCounts[selectedConfessionDetail.id] || 0) > 0 && (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {(likersByConfession[selectedConfessionDetail.id] || []).slice(0, 5).map((liker: any, idx: number) => (
+                          <div key={idx} className="w-8 h-8 rounded-full bg-[#d4af37] text-black flex items-center justify-center font-bold text-xs overflow-hidden border border-[#d4af37] cursor-pointer" title={liker.name}>
+                            {liker.avatar_url ? (
+                              <img src={liker.avatar_url} className="w-full h-full object-cover" alt={liker.name}/>
+                            ) : (
+                              liker.name?.charAt(0) || "?"
+                            )}
+                          </div>
+                        ))}
+                        {(likersByConfession[selectedConfessionDetail.id]?.length || 0) > 5 && (
+                          <button
+                            onClick={() => {
+                              setSelectedConfessionForLikers(selectedConfessionDetail);
+                              setShowLikersModal(true);
+                            }}
+                            className="text-xs text-gray-400 ml-2 hover:text-[#d4af37] transition-colors"
+                          >
+                            +{(likersByConfession[selectedConfessionDetail.id]?.length || 0) - 5} người khác
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
-                )}
+
+                  {/* Comments Section */}
+                  {commentsByConfession[selectedConfessionDetail.id]?.length > 0 && (
+                    <div className="space-y-3">
+                      <p className="text-gray-500 text-xs uppercase font-bold">
+                        💬 {commentsByConfession[selectedConfessionDetail.id]?.length || 0} bình luận
+                      </p>
+                      
+                      <div className="space-y-3">
+                        {/* User Comments */}
+                        {commentsByConfession[selectedConfessionDetail.id]?.map((comment: any, idx: number) => (
+                          <div key={idx} className="p-3 bg-black/30 rounded-xl space-y-1">
+                            <div className="flex items-center gap-2">
+                              <div className="w-6 h-6 rounded-full bg-[#d4af37] text-black flex items-center justify-center font-bold text-xs overflow-hidden border border-[#d4af37]">
+                                {comment.guests?.avatar_url ? (
+                                  <img src={comment.guests.avatar_url} className="w-full h-full object-cover" alt={comment.guests?.name}/>
+                                ) : (
+                                  comment.guests?.name?.charAt(0) || "?"
+                                )}
+                              </div>
+                              <span className="font-bold text-sm text-[#fadd7d]">{comment.guests?.name || 'Ẩn danh'}</span>
+                            </div>
+                            <p className="text-gray-200 text-sm ml-8">{comment.content}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Comment Input Section */}
+                  <div className="border-t border-[#222] pt-4 space-y-3">
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-full bg-[#d4af37] text-black flex items-center justify-center font-bold text-xs overflow-hidden border border-[#d4af37] flex-shrink-0 mt-2">
+                        {adminUser?.avatar_url ? (
+                          <img src={adminUser.avatar_url} className="w-full h-full object-cover" alt="admin"/>
+                        ) : (
+                          adminUser?.name?.charAt(0) || "A"
+                        )}
+                      </div>
+                      <div className="flex-1 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-xs text-[#fadd7d]">{adminUser?.name || 'Admin'}</span>
+                          <span className="text-xs text-gray-500">Admin</span>
+                        </div>
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={commentInput[selectedConfessionDetail.id] || ""}
+                            onChange={(e) => setCommentInput(prev => ({ ...prev, [selectedConfessionDetail.id]: e.target.value }))}
+                            placeholder="Viết bình luận..."
+                            className="flex-1 bg-black border border-[#333] rounded-lg px-3 py-2 text-xs text-gray-200 focus:border-[#d4af37] outline-none placeholder:text-gray-600"
+                          />
+                          <button
+                            onClick={() => {
+                              handleCommentConfession(selectedConfessionDetail.id, commentInput[selectedConfessionDetail.id] || "");
+                              setCommentInput(prev => ({ ...prev, [selectedConfessionDetail.id]: "" }));
+                            }}
+                            disabled={!commentInput[selectedConfessionDetail.id]?.trim()}
+                            className="bg-[#d4af37] text-black px-3 py-2 rounded-lg font-bold text-xs uppercase disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#c9a227] transition-colors"
+                          >
+                            Gửi
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
+          </div>
+        </div>
+      )}
 
-            {/* Footer - Actions */}
-            <div className="p-4 border-t border-[#222] bg-[#0a0a0a] space-y-2">
-              <button 
-                onClick={() => {
-                  handleLikeConfession(selectedConfessionDetail.id, selectedConfessionDetail.likes_count);
-                  setSelectedConfessionDetail({...selectedConfessionDetail, likes_count: (selectedConfessionDetail.likes_count || 0) > 0 ? (selectedConfessionDetail.likes_count || 0) - 1 : 1});
-                }}
-                className="w-full py-3 bg-red-500/20 text-red-400 font-bold rounded-xl flex items-center justify-center gap-2 uppercase text-xs tracking-widest hover:bg-red-500/30 transition-colors"
-              >
-                <Heart size={16} className={selectedConfessionDetail.likes_count > 0 ? "fill-red-500" : ""} /> 
-                {selectedConfessionDetail.likes_count > 0 ? 'Bỏ thích' : 'Thích'}
+      {/* IMAGE PREVIEW MODAL */}
+      {showImagePreviewModal && (
+        <div 
+          className="fixed inset-0 bg-black/95 backdrop-blur-sm z-[120] flex items-center justify-center p-4"
+          onClick={() => setShowImagePreviewModal(false)}
+        >
+          <div 
+            className="relative max-w-4xl max-h-[90vh] w-full h-full flex flex-col items-center justify-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {previewImages.length > 0 ? (
+              <>
+                <img 
+                  src={previewImages[currentPreviewIndex]} 
+                  alt="Full preview" 
+                  className="max-w-full max-h-[80vh] object-contain rounded-lg"
+                />
+                {previewImages.length > 1 && (
+                  <div className="flex gap-4 mt-4">
+                    <button 
+                      onClick={() => setCurrentPreviewIndex(prev => prev > 0 ? prev - 1 : previewImages.length - 1)}
+                      className="bg-white/20 hover:bg-white/30 text-white px-4 py-2 rounded-lg font-bold transition-colors"
+                    >
+                      ← Trước
+                    </button>
+                    <span className="text-white/80 font-bold self-center">
+                      {currentPreviewIndex + 1} / {previewImages.length}
+                    </span>
+                    <button 
+                      onClick={() => setCurrentPreviewIndex(prev => prev < previewImages.length - 1 ? prev + 1 : 0)}
+                      className="bg-white/20 hover:bg-white/30 text-white px-4 py-2 rounded-lg font-bold transition-colors"
+                    >
+                      Tiếp →
+                    </button>
+                  </div>
+                )}
+              </>
+            ) : null}
+            <button 
+              onClick={() => setShowImagePreviewModal(false)}
+              className="absolute top-4 right-4 bg-black/60 hover:bg-black/80 text-white p-2 rounded-full transition-colors"
+            >
+              <X size={24} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* LIKERS MODAL */}
+      {showLikersModal && selectedConfessionForLikers && (
+        <div className="fixed inset-0 z-[110] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <div className="w-full max-w-md bg-[#111] border border-[#333] rounded-3xl overflow-hidden flex flex-col shadow-2xl animate-in zoom-in-95 max-h-[80vh]">
+            {/* Header */}
+            <div className="flex items-center justify-between p-4 border-b border-[#222] bg-[#0a0a0a]">
+              <h3 className="text-[#d4af37] font-bold uppercase text-sm tracking-widest">
+                {(() => {
+                  console.log('👥 [Admin Modal] Rendering likers for:', selectedConfessionForLikers.id);
+                  console.log('📊 [Admin Modal] Likers array:', likersByConfession[selectedConfessionForLikers.id] || []);
+                  console.log('💯 [Admin Modal] Count:', likesCounts[selectedConfessionForLikers.id]);
+                  return likesCounts[selectedConfessionForLikers.id] || 0;
+                })()}  Lượt thích
+              </h3>
+              <button onClick={() => setShowLikersModal(false)} className="p-2 hover:bg-[#222] rounded-full transition-colors">
+                <X size={20} className="text-gray-400"/>
               </button>
-              <button 
-                onClick={() => {
-                  handleCommentConfession(selectedConfessionDetail.id);
-                }}
-                className="w-full py-3 bg-[#d4af37] text-black font-bold rounded-xl flex items-center justify-center gap-2 uppercase text-xs tracking-widest"
-              >
-                <MessageCircle size={16} /> Bình luận
-              </button>
+            </div>
+
+            {/* Likers List */}
+            <div className="flex-1 overflow-y-auto">
+              <div className="space-y-2 p-4">
+                {(likersByConfession[selectedConfessionForLikers.id] || []).map((liker: any, idx: number) => (
+                  <div key={idx} className="flex items-center gap-3 p-3 bg-black/30 rounded-xl hover:bg-black/50 transition-colors">
+                    <div className="w-10 h-10 rounded-full bg-[#d4af37] text-black flex items-center justify-center font-bold text-sm overflow-hidden border-2 border-[#d4af37] flex-shrink-0">
+                      {liker.avatar_url ? (
+                        <img src={liker.avatar_url} className="w-full h-full object-cover" alt={liker.name}/>
+                      ) : (
+                        liker.name?.charAt(0) || "?"
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-bold text-sm text-[#fadd7d]">{liker.name || 'Ẩn danh'}</p>
+                      {liker.isAdmin && (
+                        <p className="text-xs text-[#d4af37] font-bold">Admin</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>

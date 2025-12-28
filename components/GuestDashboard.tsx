@@ -5,15 +5,15 @@ import ChatGroup from "@/components/ChatGroup";
 import NetworkSection, { ChatGroupInfo } from "@/components/NetworkSection";
 import { supabase } from "@/lib/supabase";
 import {
-    ArrowLeft,
-    BellRing,
-    Camera,
-    Check,
-    Crown,
-    Edit3,
-    Heart,
-    HeartHandshake, ImagePlus,
-    Loader2, MessageCircle, Send, Share2, Ticket, Trash2, UserPlus, Users, X
+  ArrowLeft,
+  BellRing,
+  Camera,
+  Check,
+  Crown,
+  Edit3,
+  Heart,
+  HeartHandshake, ImagePlus,
+  Loader2, MessageCircle, Send, Share2, Ticket, Trash2, UserPlus, Users, X
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
@@ -21,7 +21,6 @@ import { useEffect, useRef, useState } from "react";
 const HOST_INFO = {
   name: "Đức Kiên",
   shortName: "DK",
-  role: "Chủ tiệc",
   isHost: true
 };
 
@@ -59,7 +58,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
   
   // Wish Data
   const [content, setContent] = useState("");
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const [sent, setSent] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -68,7 +67,8 @@ export default function GuestDashboard({ guest }: DashboardProps) {
   const [selectedConfession, setSelectedConfession] = useState<any>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState("");
-  const [editFile, setEditFile] = useState<File | null>(null);
+  const [editFiles, setEditFiles] = useState<File[]>([]);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isUpdating, setIsUpdating] = useState(false);
   const editFileInputRef = useRef<HTMLInputElement>(null);
   const [confessionVisibility, setConfessionVisibility] = useState<'admin' | 'everyone'>('admin');
@@ -78,9 +78,16 @@ export default function GuestDashboard({ guest }: DashboardProps) {
   const [commentInput, setCommentInput] = useState("");
   const [isPostingComment, setIsPostingComment] = useState(false);
   const [guestLikes, setGuestLikes] = useState<Set<string>>(new Set());
-  const [likesCounts, setLikesCounts] = useState<Record<string, number>>({});
 
   const [commentsByConfession, setCommentsByConfession] = useState<Record<string, any[]>>({});
+  const [likersByConfession, setLikersByConfession] = useState<Record<string, any[]>>({}); // Source of truth for likes
+  const [showLikersModal, setShowLikersModal] = useState(false);
+  const [likersList, setLikersList] = useState<any[]>([]);
+  const [selectedConfessionForLikers, setSelectedConfessionForLikers] = useState<any>(null);
+  const [showImagePreviewModal, setShowImagePreviewModal] = useState(false);
+  const [previewImageUrl, setPreviewImageUrl] = useState<string>("");
+  const [previewImages, setPreviewImages] = useState<string[]>([]);
+  const [currentPreviewIndex, setCurrentPreviewIndex] = useState(0);
 
   // --- 1. KHỞI TẠO AUDIO CONTEXT ---
   useEffect(() => {
@@ -93,14 +100,20 @@ export default function GuestDashboard({ guest }: DashboardProps) {
   useEffect(() => {
     const fetchAdminInfo = async () => {
       try {
+        console.log('🔄 [fetchAdminInfo] Fetching admin info...');
         const { data } = await supabase
           .from('guests')
           .select('id, name, avatar_url')
           .eq('id', 'admin')
           .single();
-        if (data) setAdminInfo(data);
+        if (data) {
+          console.log('✅ [fetchAdminInfo] Admin info loaded:', data);
+          setAdminInfo(data);
+        } else {
+          console.warn('⚠️ [fetchAdminInfo] No admin info found');
+        }
       } catch (e) {
-        console.error('Error fetching admin info:', e);
+        console.error('❌ [fetchAdminInfo] Error:', e);
       }
     };
     fetchAdminInfo();
@@ -115,36 +128,30 @@ export default function GuestDashboard({ guest }: DashboardProps) {
       let imageUrl = selectedConfession.image_url;
       
       // Upload ảnh mới nếu chọn
-      if (editFile) {
-        const timestamp = Date.now();
-        const fileName = `confession-${selectedConfession.id}-${timestamp}`;
-        
-        try {
+      if (editFiles.length > 0) {
+        const uploadedUrls: string[] = await Promise.all(editFiles.map(async (file) => {
+          const timestamp = Date.now();
+          const randomId = Math.random().toString(36).substr(2, 9);
+          const fileName = `confession-${selectedConfession.id}-${timestamp}-${randomId}`;
+          
           const { data: uploadData, error: uploadError } = await supabase.storage
             .from('confessions')
-            .upload(fileName, editFile, { upsert: true });
+            .upload(fileName, file, { upsert: true });
           
           if (uploadError) {
-            console.error('Upload storage error:', uploadError);
             throw new Error(`Upload failed: ${uploadError.message}`);
           }
-        } catch (uploadErr) {
-          console.error('Upload exception:', uploadErr);
-          throw uploadErr;
-        }
+          
+          const { data: publicUrlData } = supabase.storage
+            .from('confessions')
+            .getPublicUrl(fileName);
+          return publicUrlData.publicUrl;
+        }));
         
-        // Xóa ảnh cũ nếu có
-        if (selectedConfession.image_url && selectedConfession.image_url.includes('confessions/')) {
-          const oldPath = selectedConfession.image_url.split('/confessions/')[1];
-          await supabase.storage.from('confessions').remove([oldPath]).catch((err) => {
-            console.warn('Could not delete old image:', err);
-          });
-        }
-        
-        const { data: publicUrlData } = supabase.storage
-          .from('confessions')
-          .getPublicUrl(fileName);
-        imageUrl = publicUrlData.publicUrl;
+        // Combine new and existing images
+        const existingUrls = parseImageUrls(selectedConfession.image_url);
+        const allUrls = [...existingUrls, ...uploadedUrls];
+        imageUrl = JSON.stringify(allUrls);
       }
       
       // Update confession via API route
@@ -155,6 +162,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
           confessionId: selectedConfession.id,
           content: editContent,
           visibility: confessionVisibility,
+          imageUrl: imageUrl,
         }),
       });
 
@@ -181,7 +189,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
       ));
       
       setIsEditing(false);
-      setEditFile(null);
+      setEditFiles([]);
       alert('Đã lưu thay đổi thành công!');
     } catch (error: any) {
       console.error('Edit error:', error?.message || error);
@@ -220,15 +228,94 @@ export default function GuestDashboard({ guest }: DashboardProps) {
 
   // --- LẤY DANH SÁCH LƯU BÚT CỦA TÔI ---
   const fetchMyConfessions = async () => {
+    console.log('🔄 [fetchMyConfessions] Starting fetch for guest:', guest.id);
     const { data } = await supabase
       .from('confessions')
       .select('*')
       .eq('guest_id', guest.id)
       .order('created_at', { ascending: false });
-    if (data) setMyConfessions(data);
+    
+    console.log('✅ [fetchMyConfessions] Confessions fetched:', data?.length || 0, data);
+    
+    if (data) {
+      setMyConfessions(data);
+      
+      // Get all confession IDs for batch queries
+      const confessionIds = data.map(c => c.id);
+      console.log('📋 [fetchMyConfessions] Confession IDs:', confessionIds);
+      
+      // Fetch ALL likes and comments in 2 batch queries
+      const { data: allLikes } = await supabase
+        .from('confession_likes')
+        .select('*, guests(id, name, avatar_url)')
+        .in('confession_id', confessionIds);
+      
+      console.log('❤️ [fetchMyConfessions] All likes fetched:', allLikes?.length || 0, allLikes);
+      
+      const { data: allComments } = await supabase
+        .from('confession_comments')
+        .select('*')
+        .in('confession_id', confessionIds);
+      
+      console.log('💬 [fetchMyConfessions] All comments fetched:', allComments?.length || 0, allComments);
+      
+      // Calculate on client side
+      const likersByIdMap: Record<string, any[]> = {};
+      const commentCounts: Record<string, any[]> = {};
+      
+      data.forEach(confession => {
+        // Build likers array (only count, no full data yet)
+        const userLikers = allLikes
+          ?.filter(l => l.confession_id === confession.id)
+          .map((l: any) => l.guests) || [];
+        
+        console.log(`👥 [fetchMyConfessions] Confession ${confession.id}: ${userLikers.length} user likes, admin_like=${confession.likes_count}`);
+        
+        // Add admin if liked
+        if (confession.likes_count > 0 && adminInfo) {
+          likersByIdMap[confession.id] = [
+            {
+              id: adminInfo.id,
+              name: adminInfo.name,
+              avatar_url: adminInfo.avatar_url,
+              isAdmin: true
+            },
+            ...userLikers
+          ];
+          console.log(`✨ [fetchMyConfessions] Added admin to confession ${confession.id}, total likers: ${likersByIdMap[confession.id].length}`);
+        } else {
+          likersByIdMap[confession.id] = userLikers;
+          if (confession.likes_count > 0 && !adminInfo) {
+            console.warn(`⚠️ [fetchMyConfessions] Admin like flag set but adminInfo not loaded for ${confession.id}`);
+          }
+        }
+        
+        // Get comments for this confession
+        const confComments = allComments?.filter(c => c.confession_id === confession.id) || [];
+        console.log(`💬 [fetchMyConfessions] Confession ${confession.id}: ${confComments.length} user comments, admin_comment=${!!confession.admin_comment}`);
+        
+        if (confession.admin_comment) {
+          commentCounts[confession.id] = [
+            { id: 'admin-comment', content: confession.admin_comment, guest_id: 'admin', created_at: confession.created_at, guests: { id: 'admin', name: 'Admin', avatar_url: null } },
+            ...confComments
+          ];
+        } else {
+          commentCounts[confession.id] = confComments;
+        }
+      });
+      
+      console.log('📊 [fetchMyConfessions] Final likersByIdMap:', likersByIdMap);
+      console.log('📊 [fetchMyConfessions] Final commentCounts:', commentCounts);
+      
+      setLikersByConfession(likersByIdMap);
+      setCommentsByConfession(commentCounts);
+      console.log('✅ [fetchMyConfessions] State updated successfully');
+    }
   };
 
   const fetchPublicConfessions = async () => {
+    console.log('🔄 [fetchPublicConfessions] Starting fetch');
+    
     const { data } = await supabase
       .from('confessions')
       .select(`
@@ -237,6 +324,9 @@ export default function GuestDashboard({ guest }: DashboardProps) {
       `)
       .eq('visibility', 'everyone')
       .order('created_at', { ascending: false });
+    
+    console.log('✅ [fetchPublicConfessions] Public confessions fetched:', data?.length || 0);
+    
     if (data) setPublicConfessions(data);
 
     // Fetch user's likes
@@ -245,70 +335,232 @@ export default function GuestDashboard({ guest }: DashboardProps) {
       .select('confession_id')
       .eq('guest_id', guest.id);
     
+    console.log('❤️ [fetchPublicConfessions] User likes:', likes?.length || 0, likes?.map(l => l.confession_id));
+    
     if (likes) {
       const likeSet = new Set(likes.map(l => l.confession_id));
       setGuestLikes(likeSet);
     }
 
-    // Fetch like counts + comment counts cho mỗi confession
+    // Fetch like/comment data in 2 batch queries
     if (data) {
-      const likeCounts: Record<string, number> = {};
+      const confessionIds = data.map(c => c.id);
+      console.log('📋 [fetchPublicConfessions] Processing', confessionIds.length, 'confessions');
+      
+      // Batch fetch ALL likes with guest data
+      const { data: allLikes } = await supabase
+        .from('confession_likes')
+        .select('*, guests(id, name, avatar_url)')
+        .in('confession_id', confessionIds);
+      
+      console.log('❤️ [fetchPublicConfessions] All likes fetched:', allLikes?.length || 0);
+      
+      // Batch fetch ALL comments
+      const { data: allComments } = await supabase
+        .from('confession_comments')
+        .select('*')
+        .in('confession_id', confessionIds);
+      
+      console.log('💬 [fetchPublicConfessions] All comments fetched:', allComments?.length || 0);
+      
+      // Build likers and comments maps
+      const likersByIdMap: Record<string, any[]> = {};
       const commentCounts: Record<string, any[]> = {};
       
-      for (const confession of data) {
-        const { count: likeCount } = await supabase
-          .from('confession_likes')
-          .select('*', { count: 'exact', head: true })
-          .eq('confession_id', confession.id);
-        likeCounts[confession.id] = likeCount || 0;
-
-        const { data: comments } = await supabase
-          .from('confession_comments')
-          .select('*')
-          .eq('confession_id', confession.id);
-        commentCounts[confession.id] = comments || [];
-      }
+      data.forEach(confession => {
+        // Build likers array with full user data
+        const userLikers = allLikes
+          ?.filter(l => l.confession_id === confession.id)
+          .map((l: any) => l.guests) || [];
+        
+        console.log(`👥 [fetchPublicConfessions] Confession ${confession.id}: ${userLikers.length} user likes, admin_like=${confession.likes_count}`);
+        
+        // Add admin if liked
+        if (confession.likes_count > 0 && adminInfo) {
+          likersByIdMap[confession.id] = [
+            {
+              id: adminInfo.id,
+              name: adminInfo.name,
+              avatar_url: adminInfo.avatar_url,
+              isAdmin: true
+            },
+            ...userLikers
+          ];
+          console.log(`✨ [fetchPublicConfessions] Added admin to confession ${confession.id}, total: ${likersByIdMap[confession.id].length}`);
+        } else {
+          likersByIdMap[confession.id] = userLikers;
+          if (confession.likes_count > 0 && !adminInfo) {
+            console.warn(`⚠️ [fetchPublicConfessions] Admin like flag set but adminInfo not loaded for ${confession.id}`);
+          }
+        }
+        
+        // Get comments for this confession
+        const confComments = allComments?.filter(c => c.confession_id === confession.id) || [];
+        
+        if (confession.admin_comment) {
+          commentCounts[confession.id] = [
+            { id: 'admin-comment', content: confession.admin_comment, guest_id: 'admin', created_at: confession.created_at, guests: { id: 'admin', name: 'Admin', avatar_url: null } },
+            ...confComments
+          ];
+        } else {
+          commentCounts[confession.id] = confComments;
+        }
+      });
       
-      setLikesCounts(likeCounts);
+      console.log('📊 [fetchPublicConfessions] Final likersByIdMap:', likersByIdMap);
+      console.log('📊 [fetchPublicConfessions] Final commentCounts:', commentCounts);
+      
+      setLikersByConfession(likersByIdMap);
       setCommentsByConfession(commentCounts);
+      console.log('✅ [fetchPublicConfessions] State updated successfully');
     }
   };
 
   const fetchComments = async (confessionId: string) => {
     try {
+      console.log('💬 [fetchComments] Fetching comments for:', confessionId);
+      
       const response = await fetch(`/api/confessions/comments?confessionId=${confessionId}`);
       const { comments } = await response.json();
-      console.log('Fetched comments:', comments?.length || 0, comments);
-      setCommentsByConfession(prev => ({ ...prev, [confessionId]: comments || [] }));
+      console.log('✅ [fetchComments] Fetched user comments:', comments?.length || 0);
+      
+      // Store comments
+      setCommentsByConfession(prev => { 
+        console.log('📝 [fetchComments] Updated commentsByConfession for:', confessionId, 'with', comments?.length || 0, 'comments');
+        return { ...prev, [confessionId]: comments || [] };
+      });
+      
+      // Update comment count - include admin comment if exists
+      const confession = selectedConfession;
+      const adminCommentCount = confession?.admin_comment ? 1 : 0;
+      const totalComments = (comments?.length || 0) + adminCommentCount;
+      console.log('📊 [fetchComments] Total comments (user + admin):', totalComments);
+      
     } catch (error) {
-      console.error('Fetch comments error:', error);
+      console.error('❌ [fetchComments] Error:', error);
+    }
+  };
+
+  // Helper function to parse image URLs (handles both old single URL and new JSON array format)
+  const parseImageUrls = (imageData: string | null): string[] => {
+    if (!imageData) return [];
+    try {
+      const parsed = JSON.parse(imageData);
+      return Array.isArray(parsed) ? parsed : [imageData];
+    } catch {
+      return imageData ? [imageData] : [];
     }
   };
 
   const handleLikeConfession = async (confessionId: string) => {
     try {
+      console.log('❤️ [handleLikeConfession] Starting like action for:', confessionId);
+      
       const response = await fetch('/api/confessions/like', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ confessionId, guestId: guest.id })
       });
-      const { liked, likeCount } = await response.json();
+      const { liked } = await response.json();
+      
+      console.log('📊 [handleLikeConfession] Response:', {liked, status: response.status});
       
       const newLikes = new Set(guestLikes);
       if (liked) {
+        console.log('✅ [handleLikeConfession] Added confession to guestLikes');
         newLikes.add(confessionId);
+        
+        // Update likersByConfession immediately - add self to likers
+        setLikersByConfession(prev => {
+          const existing = prev[confessionId] || [];
+          const selfAlreadyExists = existing.some(l => l.id === guest.id);
+          if (selfAlreadyExists) {
+            console.log('⚠️ [handleLikeConfession] Self already in likers, skipping add');
+            return prev;
+          }
+          const selfLiker = {
+            id: guest.id,
+            name: guest.name,
+            avatar_url: guest.avatar_url || null
+          };
+          console.log('➕ [handleLikeConfession] Added self to likers array');
+          return {
+            ...prev,
+            [confessionId]: [...existing, selfLiker]
+          };
+        });
       } else {
+        console.log('🗑️ [handleLikeConfession] Removed confession from guestLikes');
         newLikes.delete(confessionId);
+        
+        // Update likersByConfession immediately - remove self from likers
+        setLikersByConfession(prev => {
+          const existing = prev[confessionId] || [];
+          const newArray = existing.filter(l => l.id !== guest.id);
+          console.log(`➖ [handleLikeConfession] Removed self from likers array, new count: ${newArray.length}`);
+          return {
+            ...prev,
+            [confessionId]: newArray
+          };
+        });
       }
       setGuestLikes(newLikes);
-      setLikesCounts(prev => ({ ...prev, [confessionId]: likeCount }));
+      console.log('📝 [handleLikeConfession] Updated guestLikes set, total:', newLikes.size);
     } catch (error) {
-      console.error('Like error:', error);
+      console.error('❌ [handleLikeConfession] Error:', error);
+    }
+  };
+
+  const fetchLikers = async (confessionId: string) => {
+    try {
+      console.log('🔄 [fetchLikers] Fetching likers for:', confessionId);
+      
+      const { data: likes } = await supabase
+        .from('confession_likes')
+        .select('*, guests(id, name, avatar_url)')
+        .eq('confession_id', confessionId);
+      
+      console.log('❤️ [fetchLikers] Fetched user likes:', likes?.length || 0);
+      
+      let likers: any[] = likes?.map((l: any) => l.guests) || [];
+
+      // Add admin liker if exists
+      // Look in both myConfessions and publicConfessions
+      let confession = myConfessions.find(c => c.id === confessionId) || publicConfessions.find(c => c.id === confessionId);
+      console.log('🔍 [fetchLikers] Found confession:', confession?.id, 'admin_like:', confession?.likes_count);
+      
+      if (confession?.likes_count > 0 && adminInfo) {
+        console.log('✨ [fetchLikers] Prepending admin to likers');
+        likers.unshift({
+          id: adminInfo.id,
+          name: adminInfo.name,
+          avatar_url: adminInfo.avatar_url,
+          isAdmin: true
+        });
+      } else if (confession?.likes_count > 0 && !adminInfo) {
+        console.log('⚠️ [fetchLikers] Admin like flag set but adminInfo not loaded');
+      }
+
+      // Update source of truth array
+      console.log('📊 [fetchLikers] Final likers array:', likers.length, 'likers');
+      setLikersByConfession(prev => ({
+        ...prev,
+        [confessionId]: likers
+      }));
+      
+      setSelectedConfessionForLikers(confession);
+      setShowLikersModal(true);
+      console.log('✅ [fetchLikers] Likers modal opened');
+    } catch (error) {
+      console.error('❌ [fetchLikers] Error:', error);
     }
   };
 
   const handlePostComment = async (confessionId: string) => {
     if (!commentInput.trim()) return;
+    
+    console.log('📝 [handlePostComment] Starting post for confession:', confessionId);
+    console.log('💬 [handlePostComment] Comment content:', commentInput.trim().substring(0, 50) + '...');
     
     setIsPostingComment(true);
     try {
@@ -318,29 +570,53 @@ export default function GuestDashboard({ guest }: DashboardProps) {
         body: JSON.stringify({ confessionId, guestId: guest.id, content: commentInput })
       });
       const data = await response.json();
-      console.log('Posted response:', data, 'Status:', response.status);
+      console.log('📊 [handlePostComment] Posted response:', {status: response.status, commentId: data.comment?.id});
       
       if (!response.ok) {
-        console.error('Error details:', data);
+        console.error('❌ [handlePostComment] Error details:', data);
         alert(`Lỗi: ${data.details || data.error}`);
         setIsPostingComment(false);
         return;
       }
       
-      console.log('Posted comment:', data.comment);
+      console.log('✅ [handlePostComment] Comment posted successfully:', data.comment?.id);
       
       // Delay 500ms để đảm bảo comment đã lưu vào DB trước khi fetch
+      console.log('⏳ [handlePostComment] Waiting 500ms before fetching comments...');
       setTimeout(() => {
+        console.log('🔄 [handlePostComment] Fetching fresh comments after post');
         fetchComments(confessionId);
       }, 500);
       setCommentInput("");
     } catch (error) {
-      console.error('Post comment error:', error);
+      console.error('❌ [handlePostComment] Error:', error);
       alert('Lỗi khi đăng bình luận');
     } finally {
       setIsPostingComment(false);
     }
   };
+
+  // --- UPDATE COMMENTS WITH ADMIN INFO ---
+  useEffect(() => {
+    if (!adminInfo || Object.keys(commentsByConfession).length === 0) return;
+    
+    const updatedComments = { ...commentsByConfession };
+    for (const confessionId in updatedComments) {
+      const comments = updatedComments[confessionId];
+      const adminCommentIndex = comments.findIndex(c => c.id === 'admin-comment');
+      if (adminCommentIndex !== -1 && adminInfo) {
+        comments[adminCommentIndex] = {
+          ...comments[adminCommentIndex],
+          guests: {
+            id: 'admin',
+            name: adminInfo.name,
+            avatar_url: adminInfo.avatar_url
+          }
+        };
+      }
+    }
+    setCommentsByConfession(updatedComments);
+  }, [adminInfo]);
 
   useEffect(() => {
     if (activeTab === 'wish') {
@@ -349,27 +625,106 @@ export default function GuestDashboard({ guest }: DashboardProps) {
     }
   }, [activeTab, sent]);
 
+  // --- FETCH FRESH CONFESSION DATA WHEN MODAL OPENS ---
+  const fetchFreshConfession = async (confessionId: string) => {
+    try {
+      const { data } = await supabase
+        .from('confessions')
+        .select(`
+          *,
+          guest:guests(id, name, avatar_url)
+        `)
+        .eq('id', confessionId)
+        .single();
+      
+      if (data) {
+        // Update selectedConfession with fresh data from DB
+        setSelectedConfession(data);
+        
+        // Like count đã được tính từ fetchMyConfessions/fetchPublicConfessions
+        // Chỉ cần fetch comments mới (realtime đã sync)
+      }
+    } catch (error) {
+      console.error('Fetch fresh confession error:', error);
+    }
+  };
+
   // --- FETCH COMMENTS WHEN MODAL OPENS ---
   useEffect(() => {
-    if (selectedConfession && selectedConfession.visibility === 'everyone') {
+    if (selectedConfession && (selectedConfession.visibility === 'everyone' || selectedConfession.guest_id === guest.id)) {
+      fetchFreshConfession(selectedConfession.id);
       fetchComments(selectedConfession.id);
       setCommentInput("");
     }
   }, [selectedConfession?.id]);
 
-  // --- REALTIME LẮNG NGHE PHẢN HỒI TỪ ADMIN ---
+  // --- REALTIME LẮNG NGHE PHẢN HỒI TỪ ADMIN (FEED & ADMIN LIKE) ---
   useEffect(() => {
-    if (activeTab !== 'wish') return;
-    
     const channel = supabase.channel(`confessions:${guest.id}`)
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'confessions', filter: `guest_id=eq.${guest.id}` },
         (payload: any) => {
-          // Cập nhật lưu bút khi admin thêm comment hoặc like
+          console.log('🔄 [Realtime] UPDATE my confession:', payload.new.id, {likes_count: payload.new.likes_count, admin_comment: !!payload.new.admin_comment});
+          
+          // Merge only updated fields, keep existing data like guest info
           setMyConfessions(prev => 
-            prev.map(c => c.id === payload.new.id ? payload.new : c)
+            prev.map(c => c.id === payload.new.id ? { ...c, ...payload.new } : c)
           );
+          
+          // Update admin comment
+          if (payload.new.admin_comment && !payload.old?.admin_comment) {
+            console.log('💬 [Realtime] Admin comment added to', payload.new.id);
+            setCommentsByConfession(prev => {
+              const confessionId = payload.new.id;
+              const comments = prev[confessionId] || [];
+              const adminCommentExists = comments.some((c: any) => c.id === 'admin-comment');
+              if (!adminCommentExists && adminInfo) {
+                return {
+                  ...prev,
+                  [confessionId]: [{
+                    id: 'admin-comment',
+                    content: payload.new.admin_comment,
+                    guest_id: 'admin',
+                    created_at: new Date().toISOString(),
+                    guests: { id: 'admin', name: adminInfo.name, avatar_url: adminInfo.avatar_url }
+                  }, ...comments]
+                };
+              }
+              return prev;
+            });
+          }
+          
+          // ✅ Update admin like in likersByConfession array
+          if (payload.new.likes_count !== payload.old?.likes_count) {
+            console.log('❤️ [Realtime] Admin like changed for', payload.new.id, ':', payload.old?.likes_count, '->', payload.new.likes_count);
+            setLikersByConfession(prev => {
+              const existingLikers = prev[payload.new.id] || [];
+              const userLikersOnly = existingLikers.filter(l => !l.isAdmin);
+              
+              if (payload.new.likes_count === 1) {
+                // Admin liked - prepend admin, keep all existing users
+                const newArray = [{
+                  id: adminInfo?.id || 'admin',
+                  name: adminInfo?.name || 'Admin',
+                  avatar_url: adminInfo?.avatar_url || null,
+                  isAdmin: true
+                }, ...userLikersOnly];
+                console.log(`✨ [Realtime] Admin liked ${payload.new.id}, new total: ${newArray.length}`);
+                return {
+                  ...prev,
+                  [payload.new.id]: newArray
+                };
+              } else {
+                // Admin unliked - remove admin, keep all existing users
+                console.log(`❌ [Realtime] Admin unliked ${payload.new.id}, new total: ${userLikersOnly.length}`);
+                return {
+                  ...prev,
+                  [payload.new.id]: userLikersOnly
+                };
+              }
+            });
+          }
         }
       )
       .on(
@@ -377,9 +732,57 @@ export default function GuestDashboard({ guest }: DashboardProps) {
         { event: 'UPDATE', schema: 'public', table: 'confessions', filter: `visibility=eq.everyone` },
         (payload: any) => {
           if (payload.new.guest_id !== guest.id) {
+            // Merge only updated fields, keep existing data like guest info
             setPublicConfessions(prev =>
-              prev.map(c => c.id === payload.new.id ? payload.new : c)
+              prev.map(c => c.id === payload.new.id ? { ...c, ...payload.new } : c)
             );
+            // Update admin comment
+            if (payload.new.admin_comment && !payload.old?.admin_comment) {
+              setCommentsByConfession(prev => {
+                const confessionId = payload.new.id;
+                const comments = prev[confessionId] || [];
+                const adminCommentExists = comments.some((c: any) => c.id === 'admin-comment');
+                if (!adminCommentExists && adminInfo) {
+                  return {
+                    ...prev,
+                    [confessionId]: [{
+                      id: 'admin-comment',
+                      content: payload.new.admin_comment,
+                      guest_id: 'admin',
+                      created_at: new Date().toISOString(),
+                      guests: { id: 'admin', name: adminInfo.name, avatar_url: adminInfo.avatar_url }
+                    }, ...comments]
+                  };
+                }
+                return prev;
+              });
+            }
+            // ✅ Update admin like in likersByConfession array
+            if (payload.new.likes_count !== payload.old?.likes_count) {
+              setLikersByConfession(prev => {
+                const existingLikers = prev[payload.new.id] || [];
+                const userLikersOnly = existingLikers.filter(l => !l.isAdmin);
+                
+                if (payload.new.likes_count === 1) {
+                  // Admin liked - prepend admin, keep all existing users
+                  return {
+                    ...prev,
+                    [payload.new.id]: [{
+                      id: adminInfo?.id || 'admin',
+                      name: adminInfo?.name || 'Admin',
+                      avatar_url: adminInfo?.avatar_url || null,
+                      isAdmin: true
+                    }, ...userLikersOnly]
+                  };
+                } else {
+                  // Admin unliked - remove admin, keep all existing users
+                  return {
+                    ...prev,
+                    [payload.new.id]: userLikersOnly
+                  };
+                }
+              });
+            }
           }
         }
       )
@@ -389,13 +792,178 @@ export default function GuestDashboard({ guest }: DashboardProps) {
         (payload: any) => {
           if (payload.new.guest_id !== guest.id) {
             setPublicConfessions(prev => [payload.new, ...prev]);
+            // Initialize likersByConfession for new confession
+            setLikersByConfession(prev => ({
+              ...prev,
+              [payload.new.id]: payload.new.likes_count === 1 && adminInfo ? [{
+                id: adminInfo.id,
+                name: adminInfo.name,
+                avatar_url: adminInfo.avatar_url,
+                isAdmin: true
+              }] : []
+            }));
+            setCommentsByConfession(prev => ({
+              ...prev,
+              [payload.new.id]: payload.new.admin_comment ? [{
+                id: 'admin-comment',
+                content: payload.new.admin_comment,
+                guest_id: 'admin',
+                created_at: new Date().toISOString(),
+                guests: { id: 'admin', name: adminInfo?.name || 'Admin', avatar_url: adminInfo?.avatar_url || null }
+              }] : []
+            }));
           }
         }
       )
+      // --- REALTIME LIKES (Grid Display) ---
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'confession_likes' },
+        async (payload: any) => {
+          console.log('➕ [Realtime Grid] User liked:', payload.new.confession_id, 'by guest:', payload.new.guest_id);
+          
+          // Fetch the new liker's user data
+          const { data: user } = await supabase
+            .from('guests')
+            .select('id, name, avatar_url')
+            .eq('id', payload.new.guest_id)
+            .single();
+          
+          if (user) {
+            // Add user to likers array (avoid duplicates)
+            setLikersByConfession(prev => {
+              const existing = prev[payload.new.confession_id] || [];
+              // Check if user already exists
+              const userExists = existing.some(l => l.id === user.id);
+              if (userExists) {
+                console.log('⚠️ [Realtime Grid] User already in likers, skipping', user.id);
+                return prev;
+              }
+              const updated = [...existing, user];
+              return {
+                ...prev,
+                [payload.new.confession_id]: updated
+              };
+            });
+            console.log('✨ [Realtime Grid] Updated likers for', payload.new.confession_id);
+            
+            // If current user liked, update guestLikes
+            if (payload.new.guest_id === guest.id) {
+              console.log('❤️ [Realtime Grid] Current user liked, updating guestLikes');
+              setGuestLikes(prev => {
+                const newSet = new Set(prev);
+                newSet.add(payload.new.confession_id);
+                return newSet;
+              });
+            }
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'confession_likes' },
+        async (payload: any) => {
+          console.log('➖ [Realtime Grid] DELETE event - refetching all likers');
+          
+          // Refetch all likers for currently displayed confessions
+          const allConfessionIds = [...publicConfessions, ...myConfessions].map(c => c.id);
+          
+          if (allConfessionIds.length === 0) return;
+          
+          const { data: allLikes } = await supabase
+            .from('confession_likes')
+            .select('*, guests(id, name, avatar_url)')
+            .in('confession_id', allConfessionIds);
+          
+          console.log('🔄 [Realtime Grid] Refetched all likes:', allLikes?.length || 0);
+          
+          // Rebuild likersByConfession for all confessions
+          const newLikersByConfession: Record<string, any[]> = {};
+          
+          allConfessionIds.forEach(confessionId => {
+            const confessionLikes = (allLikes || []).filter(l => l.confession_id === confessionId);
+            const userLikers = confessionLikes.map(l => l.guests);
+            
+            // Get the confession to check if admin liked
+            const confession = publicConfessions.find(c => c.id === confessionId) ||
+                             myConfessions.find(c => c.id === confessionId);
+            
+            let finalLikers = userLikers;
+            if (confession?.likes_count === 1 && adminInfo) {
+              // Admin liked - prepend admin
+              finalLikers = [{
+                id: adminInfo.id,
+                name: adminInfo.name,
+                avatar_url: adminInfo.avatar_url,
+                isAdmin: true
+              }, ...userLikers];
+            }
+            
+            newLikersByConfession[confessionId] = finalLikers;
+          });
+          
+          // Update state with all refetched data
+          setLikersByConfession(prev => ({...prev, ...newLikersByConfession}));
+        }
+      )
+      // --- REALTIME COMMENTS (Grid Display) ---
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'confession_comments' },
+        (payload: any) => {
+          console.log('💬 [Realtime Grid] Comment added to:', payload.new.confession_id);
+          
+          // Update comments for the confession
+          setCommentsByConfession(prev => {
+            const confessionId = payload.new.confession_id;
+            const existing = prev[confessionId] || [];
+            return {
+              ...prev,
+              [confessionId]: [payload.new, ...existing]
+            };
+          });
+          console.log('✨ [Realtime Grid] Updated comments for', payload.new.confession_id);
+        }
+      )
+      .on('broadcast', { event: 'like_changed' }, (payload: any) => {
+        console.log('📢 [Broadcast] Like changed:', payload.payload);
+        const { confessionId, action, likeCount } = payload.payload;
+        
+        // Refetch all likers for this confession
+        (async () => {
+          const { data: allLikes } = await supabase
+            .from('confession_likes')
+            .select('*, guests(id, name, avatar_url)')
+            .eq('confession_id', confessionId);
+          
+          const userLikers = (allLikes || []).map(l => l.guests);
+          
+          // Get the confession to check if admin liked
+          const confession = publicConfessions.find(c => c.id === confessionId) ||
+                           myConfessions.find(c => c.id === confessionId);
+          
+          let finalLikers = userLikers;
+          if (confession?.likes_count === 1 && adminInfo) {
+            finalLikers = [{
+              id: adminInfo.id,
+              name: adminInfo.name,
+              avatar_url: adminInfo.avatar_url,
+              isAdmin: true
+            }, ...userLikers];
+          }
+          
+          setLikersByConfession(prev => ({
+            ...prev,
+            [confessionId]: finalLikers
+          }));
+          
+          console.log(`📢 [Broadcast] Updated likers for ${confessionId}: ${finalLikers.length}`);
+        })();
+      })
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [activeTab, guest.id]);
+  }, [guest.id, adminInfo, publicConfessions, myConfessions]);
 
   // --- REALTIME COMMENTS & LIKES ---
   useEffect(() => {
@@ -419,18 +987,117 @@ export default function GuestDashboard({ guest }: DashboardProps) {
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'confession_likes', filter: `confession_id=eq.${selectedConfession.id}` },
-        (payload: any) => {
-          // Fetch updated like count
-          const confessionLikes = publicConfessions.find(c => c.id === selectedConfession.id)?.likes_count || 0;
-          setLikesCounts(prev => ({ ...prev, [selectedConfession.id]: confessionLikes + 1 }));
+        async (payload: any) => {
+          console.log('➕ [Realtime Modal] User liked:', payload.new.confession_id, 'by guest:', payload.new.guest_id);
+          
+          // Fetch the new liker's user data
+          const { data: user } = await supabase
+            .from('guests')
+            .select('id, name, avatar_url')
+            .eq('id', payload.new.guest_id)
+            .single();
+          
+          if (user) {
+            console.log('✨ [Realtime Modal] Added liker to modal:', user.id, user.name);
+            // Add user to likers array (avoid duplicates)
+            setLikersByConfession(prev => {
+              const existing = prev[selectedConfession.id] || [];
+              // Check if user already exists
+              const userExists = existing.some(l => l.id === user.id);
+              if (userExists) {
+                console.log('⚠️ [Realtime Modal] User already in likers, skipping', user.id);
+                return prev;
+              }
+              return {
+                ...prev,
+                [selectedConfession.id]: [...existing, user]
+              };
+            });
+            
+            // If current user liked, update guestLikes
+            if (payload.new.guest_id === guest.id) {
+              console.log('❤️ [Realtime Modal] Current user liked, updating guestLikes');
+              setGuestLikes(prev => {
+                const newSet = new Set(prev);
+                newSet.add(payload.new.confession_id);
+                return newSet;
+              });
+            }
+          } else {
+            console.log('⚠️ [Realtime Modal] Failed to fetch user data for:', payload.new.guest_id);
+          }
         }
       )
       .on(
         'postgres_changes',
         { event: 'DELETE', schema: 'public', table: 'confession_likes', filter: `confession_id=eq.${selectedConfession.id}` },
+        async (payload: any) => {
+          // Don't process DELETE events - they have incomplete data
+          // Instead, refetch likers for current selected confession
+          console.log('➖ [Realtime Modal] DELETE event received for confession:', selectedConfession.id);
+          
+          // Refetch updated likers from DB
+          const { data: likes } = await supabase
+            .from('confession_likes')
+            .select('*, guests(id, name, avatar_url)')
+            .eq('confession_id', selectedConfession.id);
+          
+          console.log('🔄 [Realtime Modal] Refetched likers:', likes?.length || 0);
+          
+          // Build likers array
+          const userLikers = likes?.map((l: any) => l.guests) || [];
+          
+          let finalLikers = userLikers;
+          if (selectedConfession.likes_count === 1 && adminInfo) {
+            // Admin liked - prepend admin
+            finalLikers = [{
+              id: adminInfo.id,
+              name: adminInfo.name,
+              avatar_url: adminInfo.avatar_url,
+              isAdmin: true
+            }, ...userLikers];
+            console.log('✨ [Realtime Modal] Admin still liked, total:', finalLikers.length);
+          } else {
+            console.log(`❌ [Realtime Modal] After unlike, total likers: ${finalLikers.length}`);
+          }
+          
+          // Update state with refreshed data
+          setLikersByConfession(prev => ({
+            ...prev,
+            [selectedConfession.id]: finalLikers
+          }));
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'confessions', filter: `id=eq.${selectedConfession.id}` },
         (payload: any) => {
-          const confessionLikes = publicConfessions.find(c => c.id === selectedConfession.id)?.likes_count || 0;
-          setLikesCounts(prev => ({ ...prev, [selectedConfession.id]: confessionLikes - 1 }));
+          // Handle admin like/unlike
+          if (payload.new.likes_count !== payload.old?.likes_count) {
+            setLikersByConfession(prev => {
+              const existingLikers = prev[selectedConfession.id] || [];
+              const userLikersOnly = existingLikers.filter(l => !l.isAdmin);
+              
+              if (payload.new.likes_count === 1) {
+                // Admin liked - prepend admin, keep all users
+                return {
+                  ...prev,
+                  [selectedConfession.id]: [{
+                    id: adminInfo?.id || 'admin',
+                    name: adminInfo?.name || 'Admin',
+                    avatar_url: adminInfo?.avatar_url || null,
+                    isAdmin: true
+                  }, ...userLikersOnly]
+                };
+              } else {
+                // Admin unliked - remove admin, keep all users
+                return {
+                  ...prev,
+                  [selectedConfession.id]: userLikersOnly
+                };
+              }
+            });
+          }
         }
       )
       .subscribe();
@@ -569,6 +1236,19 @@ export default function GuestDashboard({ guest }: DashboardProps) {
 
   const getDisplayAvatar = () => { if (avatarUrl) return avatarUrl; return `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(guest.name)}&backgroundColor=d4af37,111111`; };
   
+  // Derived count from likers array (source of truth)
+  const getLikeCount = (confessionId: string) => 
+    likersByConfession[confessionId]?.length || 0;
+  
+  // Get comment count including admin comments
+  const getCommentCount = (confessionId: string): number => {
+    const confession = publicConfessions.find(c => c.id === confessionId) || 
+                       myConfessions.find(c => c.id === confessionId);
+    const userComments = commentsByConfession[confessionId]?.length || 0;
+    const adminComment = confession?.admin_comment ? 1 : 0;
+    return userComments + adminComment;
+  };
+  
   const getAvatarUrl = (avatarUrl: string | null, name: string) => {
     if (avatarUrl) return avatarUrl;
     return `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(name)}&backgroundColor=d4af37,111111`;
@@ -642,7 +1322,41 @@ export default function GuestDashboard({ guest }: DashboardProps) {
   const handlePreviewGroup = (group: ChatGroupInfo) => { if (joinedGroups.includes(group.tag_identifier)) { setActiveChatTag(group.tag_identifier); setPreviewGroup(null); markGroupAsRead(group.tag_identifier); } else { setPreviewGroup(group); setActiveChatTag(null); fetchRealMembers(group.tag_identifier); } };
   const handleJoinGroup = async () => { if (!previewGroup) return; setJoinedGroups(prev => [...prev, previewGroup.tag_identifier]); setActiveChatTag(previewGroup.tag_identifier); setPreviewGroup(null); try { await supabase.from('group_members').insert({ group_tag: previewGroup.tag_identifier, guest_id: guest.id, last_viewed_at: new Date().toISOString() }); } catch (e) { console.error(e); } };
   const handleLeaveGroup = (tag: string) => { setJoinedGroups(prev => prev.filter(t => t !== tag)); setActiveChatTag(null); };
-  const handleSendConfession = async () => { if (!content && !file) return; setUploading(true); try { let publicUrl = null; if (file) { const fileExt = file.name.split('.').pop(); const fileName = `${guest.id}_${Date.now()}.${fileExt}`; const { error: uploadError } = await supabase.storage.from('invitation-media').upload(fileName, file); if (uploadError) throw uploadError; publicUrl = supabase.storage.from('invitation-media').getPublicUrl(fileName).data.publicUrl; } await supabase.from('confessions').insert({ guest_id: guest.id, content: content, image_url: publicUrl }); setSent(true); setContent(""); setFile(null); } catch (error: any) { alert("Lỗi: " + error.message); } finally { setUploading(false); } };
+  const handleSendConfession = async () => { 
+    if (!content && files.length === 0) return; 
+    setUploading(true); 
+    try { 
+      let imageUrls: string[] = []; 
+      
+      // Upload multiple files
+      if (files.length > 0) {
+        imageUrls = await Promise.all(files.map(async (file) => {
+          const fileExt = file.name.split('.').pop(); 
+          const fileName = `${guest.id}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}.${fileExt}`; 
+          const { error: uploadError } = await supabase.storage.from('invitation-media').upload(fileName, file); 
+          if (uploadError) throw uploadError; 
+          return supabase.storage.from('invitation-media').getPublicUrl(fileName).data.publicUrl; 
+        }));
+      }
+      
+      // Store as JSON array if multiple, or single URL if one image
+      const imageData = imageUrls.length > 0 ? JSON.stringify(imageUrls) : null;
+      
+      await supabase.from('confessions').insert({ 
+        guest_id: guest.id, 
+        content: content, 
+        image_url: imageData 
+      }); 
+      setSent(true); 
+      setContent(""); 
+      setFiles([]);
+      setCurrentImageIndex(0);
+    } catch (error: any) { 
+      alert("Lỗi: " + error.message); 
+    } finally { 
+      setUploading(false); 
+    } 
+  };
 
   const handleNotificationClick = () => {
     if (notification?.groupTag && joinedGroups.includes(notification.groupTag)) {
@@ -742,12 +1456,74 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                         <textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder="Hãy nhắn gửi điều gì đó cho Kiên nhé..." className="w-full bg-[#0a0a0a] border border-[#333] rounded-xl p-3 text-sm min-h-[120px] text-gray-200 focus:border-[#d4af37] outline-none resize-none"/>
                         <div className="flex gap-2">
                             <button onClick={() => fileInputRef.current?.click()} className="p-3 bg-[#222] rounded-xl text-gray-400 hover:text-white"><ImagePlus size={20}/></button>
-                            <input type="file" ref={fileInputRef} hidden accept="image/*" onChange={(e) => setFile(e.target.files?.[0] || null)}/>
+                            <input type="file" ref={fileInputRef} hidden accept="image/*" multiple onChange={(e) => setFiles([...files, ...Array.from(e.target.files || [])])}/>
                             <button onClick={handleSendConfession} disabled={uploading} className="flex-1 bg-gradient-to-r from-[#d4af37] to-[#b89628] text-black font-black uppercase text-xs rounded-xl flex items-center justify-center gap-2">
                                 {uploading ? <Loader2 className="animate-spin" size={16}/> : <Send size={16}/>} Gửi ngay
                             </button>
                         </div>
-                        {file && <p className="text-[10px] text-gray-500 truncate italic bg-[#0a0a0a] p-2 rounded-lg border border-[#222]">Đã chọn: {file.name}</p>}
+                        {files.length > 0 && (
+                          <div className="space-y-2">
+                            <div className="relative rounded-xl overflow-hidden border border-[#333]">
+                              <img 
+                                src={URL.createObjectURL(files[currentImageIndex])} 
+                                alt="Preview" 
+                                className="w-full h-48 object-cover cursor-pointer hover:opacity-80 transition-opacity"
+                                onClick={() => {
+                                  setPreviewImages(files.map(f => URL.createObjectURL(f)));
+                                  setCurrentPreviewIndex(currentImageIndex);
+                                  setShowImagePreviewModal(true);
+                                }}
+                              />
+                              {files.length > 1 && (
+                                <div className="absolute bottom-2 right-2 bg-black/70 text-white px-2 py-1 rounded text-xs font-bold">
+                                  {currentImageIndex + 1}/{files.length}
+                                </div>
+                              )}
+                            </div>
+                            {files.length > 1 && (
+                              <div className="flex gap-2">
+                                <button 
+                                  onClick={() => setCurrentImageIndex(prev => prev > 0 ? prev - 1 : files.length - 1)}
+                                  className="flex-1 bg-[#222] hover:bg-[#333] text-gray-300 py-2 rounded-lg text-xs font-bold transition-colors"
+                                >
+                                  ← Trước
+                                </button>
+                                <button 
+                                  onClick={() => setCurrentImageIndex(prev => prev < files.length - 1 ? prev + 1 : 0)}
+                                  className="flex-1 bg-[#222] hover:bg-[#333] text-gray-300 py-2 rounded-lg text-xs font-bold transition-colors"
+                                >
+                                  Tiếp →
+                                </button>
+                              </div>
+                            )}
+                            <div className="flex flex-wrap gap-2">
+                              {files.map((file, idx) => (
+                                <div key={idx} className="relative group">
+                                  <img 
+                                    src={URL.createObjectURL(file)} 
+                                    alt={`Thumbnail ${idx}`}
+                                    className={`w-16 h-16 rounded-lg object-cover cursor-pointer border-2 transition-all ${
+                                      idx === currentImageIndex ? 'border-[#d4af37]' : 'border-[#333] hover:border-[#d4af37]'
+                                    }`}
+                                    onClick={() => setCurrentImageIndex(idx)}
+                                  />
+                                  <button 
+                                    onClick={() => setFiles(files.filter((_, i) => i !== idx))}
+                                    className="absolute -top-2 -right-2 bg-red-500 hover:bg-red-600 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  >
+                                    <X size={12} />
+                                  </button>
+                                </div>
+                              ))}
+                              <button
+                                onClick={() => fileInputRef.current?.click()}
+                                className="w-16 h-16 rounded-lg border-2 border-dashed border-[#333] hover:border-[#d4af37] flex items-center justify-center text-[#d4af37] hover:bg-[#222] transition-all text-xl font-bold"
+                              >
+                                +
+                              </button>
+                            </div>
+                          </div>
+                        )}
                     </div>
                 )}
              </div>
@@ -783,8 +1559,11 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                   </div>
                 ) : (
                   myConfessions.map((item) => (
-                    <div key={item.id} className="bg-[#111] border border-[#333] rounded-2xl overflow-hidden shadow-lg animate-in slide-in-from-bottom-2 cursor-pointer hover:border-[#d4af37] transition-all" onClick={() => setSelectedConfession(item)}>
-                      {item.image_url && <img src={item.image_url} className="w-full h-48 object-cover border-b border-[#222]" alt="Kỷ niệm" />}
+                    <div key={item.id} className="bg-[#111] border border-[#333] rounded-2xl overflow-hidden shadow-lg animate-in slide-in-from-bottom-2 cursor-pointer hover:border-[#d4af37] transition-all" onClick={() => {
+                      setSelectedConfession(item);
+                      setCurrentImageIndex(0);
+                    }}>
+                      {parseImageUrls(item.image_url).length > 0 && <img src={parseImageUrls(item.image_url)[0]} className="w-full h-48 object-cover border-b border-[#222]" alt="Kỷ niệm" />}
                       <div className="p-4 space-y-4">
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex-1">
@@ -798,7 +1577,19 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                         </div>
 
 
-                        <div className="flex items-center justify-between pt-3 border-t border-[#222]">
+                        {/* Like & Comment Count */}
+                        <div className="flex items-center gap-2 pt-3 border-t border-[#222] text-[11px] text-gray-500">
+                          <div className="flex items-center gap-1 px-2 py-1">
+                            <Heart size={12} />
+                            <span className="text-[10px]">{getLikeCount(item.id)}</span>
+                          </div>
+                          <div className="flex items-center gap-1 px-2 py-1">
+                            <MessageCircle size={12} />
+                            <span className="text-[10px]">{getCommentCount(item.id)}</span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between pt-2">
                           <span className="text-[10px] text-gray-600 font-mono">
                             {new Date(item.created_at).toLocaleDateString('vi-VN')} {new Date(item.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
                           </span>
@@ -810,7 +1601,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                                 setIsEditing(true);
                                 setEditContent(item.content);
                                 setConfessionVisibility(item.visibility || 'admin');
-                                setEditFile(null);
+                                setEditFiles([]);
                               }} 
                               className="p-1.5 hover:bg-[#222] rounded-lg transition-colors text-blue-400"
                               title="Chỉnh sửa"
@@ -848,8 +1639,11 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                   </div>
                 ) : (
                   publicConfessions.map((item) => (
-                    <div key={item.id} className="bg-[#111] border border-[#333] rounded-2xl overflow-hidden shadow-lg animate-in slide-in-from-bottom-2 cursor-pointer hover:border-[#d4af37] transition-all" onClick={() => setSelectedConfession(item)}>
-                      {item.image_url && <img src={item.image_url} className="w-full max-h-64 object-cover border-b border-[#222]" alt="Kỷ niệm" />}
+                    <div key={item.id} className="bg-[#111] border border-[#333] rounded-2xl overflow-hidden shadow-lg animate-in slide-in-from-bottom-2 cursor-pointer hover:border-[#d4af37] transition-all" onClick={() => {
+                      setSelectedConfession(item);
+                      setCurrentImageIndex(0);
+                    }}>
+                      {parseImageUrls(item.image_url).length > 0 && <img src={parseImageUrls(item.image_url)[0]} className="w-full max-h-64 object-cover border-b border-[#222]" alt="Kỷ niệm" />}
                       <div className="p-4 space-y-4">
                         {/* Poster info */}
                         {item.guest && (
@@ -877,38 +1671,6 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                           </button>
                         </div>
 
-                        {/* PHẢN HỒI TỪ ADMIN */}
-                        {(item.likes_count > 0 || item.admin_comment) && (
-                          <div className="bg-black/50 p-3 rounded-xl border border-[#d4af37]/20 mt-2 space-y-2">
-                            {item.likes_count > 0 && adminInfo && (
-                              <div className="flex items-center gap-2">
-                                <Heart size={12} className="fill-[#d4af37] text-[#d4af37]" />
-                                <img
-                                  src={getAvatarUrl(adminInfo.avatar_url, adminInfo.name)}
-                                  alt={adminInfo.name}
-                                  className="w-4 h-4 rounded-full object-cover"
-                                />
-                                <span className="text-[#d4af37] text-[10px] font-black uppercase">{adminInfo.name} đã thả tim</span>
-                              </div>
-                            )}
-                            {item.admin_comment && adminInfo && (
-                              <div className="space-y-1">
-                                <div className="flex items-center gap-1">
-                                  <img
-                                    src={getAvatarUrl(adminInfo.avatar_url, adminInfo.name)}
-                                    alt={adminInfo.name}
-                                    className="w-4 h-4 rounded-full object-cover"
-                                  />
-                                  <span className="text-[#fadd7d] text-[10px] font-bold uppercase">{adminInfo.name}</span>
-                                </div>
-                                <p className="text-gray-400 text-[11px] leading-relaxed italic pl-2 border-l border-[#d4af37]/40">
-                                  {item.admin_comment}
-                                </p>
-                              </div>
-                            )}
-                          </div>
-                        )}
-
                         {/* Guest Interactions Footer */}
                         <div className="flex items-center gap-2 pt-3 border-t border-[#222] text-[11px] text-gray-500">
                           <button
@@ -926,11 +1688,11 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                               size={12} 
                               className={guestLikes.has(item.id) ? 'fill-red-400' : ''}
                             />
-                            <span className="text-[10px]">{likesCounts[item.id] || 0}</span>
+                            <span className="text-[10px]">{getLikeCount(item.id)}</span>
                           </button>
                           <div className="flex items-center gap-1 px-2 py-1 text-gray-500">
                             <MessageCircle size={12} />
-                            <span className="text-[10px]">{commentsByConfession[item.id]?.length || 0}</span>
+                            <span className="text-[10px]">{getCommentCount(item.id)}</span>
                           </div>
                         </div>
 
@@ -1018,7 +1780,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                         setIsEditing(true);
                         setEditContent(selectedConfession.content);
                         setConfessionVisibility(selectedConfession.visibility || 'admin');
-                        setEditFile(null);
+                        setEditFiles([]);
                       }}
                       className="p-2 hover:bg-[#222] rounded-full transition-colors text-blue-400"
                       title="Chỉnh sửa"
@@ -1037,7 +1799,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                 <button onClick={() => {
                   setSelectedConfession(null);
                   setIsEditing(false);
-                  setEditFile(null);
+                  setEditFiles([]);
                 }} className="p-2 hover:bg-[#222] rounded-full transition-colors">
                   <X size={20} className="text-gray-400"/>
                 </button>
@@ -1051,24 +1813,52 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                 <div className="p-6 space-y-4 flex-1">
                   {/* Ảnh */}
                   <div className="space-y-2">
-                    <p className="text-gray-400 text-xs uppercase font-black tracking-widest">Ảnh</p>
-                    <div className="relative group">
-                      {editFile ? (
-                        <img src={URL.createObjectURL(editFile)} className="w-full h-64 object-cover rounded-xl border border-[#333]" alt="Preview" />
-                      ) : selectedConfession.image_url ? (
-                        <img src={selectedConfession.image_url} className="w-full h-64 object-cover rounded-xl border border-[#333]" alt="Ảnh hiện tại" />
-                      ) : (
-                        <div className="w-full h-64 bg-[#222] rounded-xl border border-[#333] flex items-center justify-center">
-                          <p className="text-gray-500 text-sm">Chưa có ảnh</p>
+                    <p className="text-gray-400 text-xs uppercase font-black tracking-widest">Ảnh ({editFiles.length + parseImageUrls(selectedConfession.image_url).length})</p>
+                    <div className="space-y-2">
+                      {editFiles.length > 0 && (
+                        <div>
+                          <p className="text-gray-500 text-[10px] mb-2">Ảnh mới:</p>
+                          <div className="flex flex-wrap gap-2">
+                            {editFiles.map((file, idx) => (
+                              <div key={idx} className="relative group">
+                                <img 
+                                  src={URL.createObjectURL(file)} 
+                                  alt={`New ${idx}`}
+                                  className="w-16 h-16 rounded-lg object-cover border border-[#d4af37]"
+                                />
+                                <button 
+                                  onClick={() => setEditFiles(editFiles.filter((_, i) => i !== idx))}
+                                  className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                >
+                                  <X size={12} />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {parseImageUrls(selectedConfession.image_url).length > 0 && (
+                        <div>
+                          <p className="text-gray-500 text-[10px] mb-2">Ảnh hiện tại:</p>
+                          <div className="flex flex-wrap gap-2">
+                            {parseImageUrls(selectedConfession.image_url).map((url, idx) => (
+                              <img 
+                                key={idx}
+                                src={url}
+                                alt={`Current ${idx}`}
+                                className="w-16 h-16 rounded-lg object-cover border border-[#333]"
+                              />
+                            ))}
+                          </div>
                         </div>
                       )}
                       <button 
                         onClick={() => editFileInputRef.current?.click()}
-                        className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 rounded-xl flex items-center justify-center transition-opacity"
+                        className="w-full py-3 bg-[#222] hover:bg-[#333] text-gray-300 rounded-xl flex items-center justify-center gap-2 transition-colors"
                       >
-                        <ImagePlus size={24} className="text-white"/>
+                        <ImagePlus size={16} /> Thêm ảnh
                       </button>
-                      <input type="file" ref={editFileInputRef} hidden accept="image/*" onChange={(e) => setEditFile(e.target.files?.[0] || null)}/>
+                      <input type="file" ref={editFileInputRef} hidden accept="image/*" multiple onChange={(e) => setEditFiles([...editFiles, ...Array.from(e.target.files || [])])}/>
                     </div>
                   </div>
 
@@ -1106,8 +1896,47 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                 // VIEW MODE
                 <>
                   {/* Ảnh */}
-                  {selectedConfession.image_url && (
-                    <img src={selectedConfession.image_url} className="w-full h-auto max-h-[50%] object-cover" alt="Kỷ niệm" />
+                  {parseImageUrls(selectedConfession.image_url).length > 0 && (
+                    <div className="relative bg-black">
+                      {(() => {
+                        const images = parseImageUrls(selectedConfession.image_url);
+                        return (
+                          <>
+                            <img 
+                              src={images[currentImageIndex]} 
+                              className="w-full h-auto max-h-[50%] object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                              alt={`Kỷ niệm ${currentImageIndex + 1}`}
+                              onClick={() => {
+                                setPreviewImages(images);
+                                setCurrentPreviewIndex(currentImageIndex);
+                                setShowImagePreviewModal(true);
+                              }}
+                            />
+                            {images.length > 1 && (
+                              <div className="absolute bottom-4 right-4 bg-black/70 text-white px-3 py-1 rounded-full text-xs font-bold">
+                                {currentImageIndex + 1}/{images.length}
+                              </div>
+                            )}
+                            {images.length > 1 && (
+                              <div className="absolute bottom-4 left-4 flex gap-2">
+                                <button 
+                                  onClick={() => setCurrentImageIndex(prev => prev > 0 ? prev - 1 : images.length - 1)}
+                                  className="bg-white/20 hover:bg-white/30 text-white px-2 py-1 rounded text-xs font-bold transition-colors"
+                                >
+                                  ←
+                                </button>
+                                <button 
+                                  onClick={() => setCurrentImageIndex(prev => prev < images.length - 1 ? prev + 1 : 0)}
+                                  className="bg-white/20 hover:bg-white/30 text-white px-2 py-1 rounded text-xs font-bold transition-colors"
+                                >
+                                  →
+                                </button>
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
+                    </div>
                   )}
 
                   {/* Nội dung */}
@@ -1120,43 +1949,8 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                       </span>
                     </div>
 
-                    {/* Phản hồi từ admin */}
-                    {(selectedConfession.likes_count > 0 || selectedConfession.admin_comment) && (
-                      <div className="space-y-3">
-                        {selectedConfession.likes_count > 0 && adminInfo && (
-                          <div className="flex items-center gap-2 bg-[#d4af37]/10 p-3 rounded-xl">
-                            <Heart size={16} className="fill-[#d4af37] text-[#d4af37]" />
-                            <img
-                              src={getAvatarUrl(adminInfo.avatar_url, adminInfo.name)}
-                              alt={adminInfo.name}
-                              className="w-6 h-6 rounded-full object-cover"
-                            />
-                            <span className="text-[#d4af37] text-sm font-bold">{adminInfo.name} đã thả tim</span>
-                          </div>
-                        )}
-
-                        {selectedConfession.admin_comment && (
-                          <div className="bg-[#0a0a0a] rounded-xl p-4 border border-[#333]">
-                            <div className="flex items-center gap-2 mb-3">
-                              {adminInfo && (
-                                <>
-                                  <img 
-                                    src={getAvatarUrl(adminInfo.avatar_url, adminInfo.name)} 
-                                    alt={adminInfo.name}
-                                    className="w-8 h-8 rounded-full object-cover border border-[#d4af37]/30"
-                                  />
-                                  <span className="text-[#d4af37] text-xs font-black uppercase">{adminInfo.name}</span>
-                                </>
-                              )}
-                            </div>
-                            <p className="text-gray-200 text-sm leading-relaxed">{selectedConfession.admin_comment}</p>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Guest Interactions Section - Only for public confessions */}
-                    {selectedConfession.visibility === 'everyone' && (
+                    {/* Guest Interactions Section - Only for public confessions or post author */}
+                    {(selectedConfession.visibility === 'everyone' || selectedConfession.guest_id === guest.id) && (
                       <div className="space-y-4">
                         {/* Like Button */}
                         <div className="flex items-center gap-3">
@@ -1172,13 +1966,24 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                               size={16} 
                               className={guestLikes.has(selectedConfession.id) ? 'fill-red-400' : ''}
                             />
-                            {likesCounts[selectedConfession.id] || 0}
+                            {getLikeCount(selectedConfession.id)}
                           </button>
+                          {/* View Likers Button - Only for post author or admin */}
+                          {(selectedConfession.guest_id === guest.id || guest.id === 'admin') && getLikeCount(selectedConfession.id) > 0 && (
+                            <button 
+                              onClick={() => fetchLikers(selectedConfession.id)}
+                              className="text-xs text-gray-500 hover:text-[#d4af37] transition-colors px-2 py-1 rounded hover:bg-[#222]"
+                            >
+                              Xem ai đã thích
+                            </button>
+                          )}
                         </div>
 
                         {/* Comments Section */}
                         <div className="space-y-3 pt-4 border-t border-[#222]">
-                          <p className="text-gray-400 text-xs uppercase font-black tracking-widest">💬 Bình luận ({commentsByConfession[selectedConfession?.id || '']?.length || 0})</p>
+                          <p className="text-gray-400 text-xs uppercase font-black tracking-widest">
+                            💬 Bình luận ({getCommentCount(selectedConfession?.id || '')})
+                          </p>
                           
                           {/* Comment Input */}
                           <div className="flex gap-2">
@@ -1205,6 +2010,19 @@ export default function GuestDashboard({ guest }: DashboardProps) {
 
                           {/* Comments List */}
                           <div className="space-y-2">
+                            {selectedConfession.admin_comment && adminInfo && (
+                              <div className="bg-[#0a0a0a] rounded-lg p-3 border border-[#333]">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <img 
+                                    src={getAvatarUrl(adminInfo.avatar_url || '', adminInfo.name || 'Admin')} 
+                                    alt={adminInfo.name}
+                                    className="w-6 h-6 rounded-full object-cover border border-gray-600"
+                                  />
+                                  <span className="text-gray-300 text-xs font-bold">{adminInfo.name}</span>
+                                </div>
+                                <p className="text-gray-200 text-sm leading-relaxed">{selectedConfession.admin_comment}</p>
+                              </div>
+                            )}
                             {commentsByConfession[selectedConfession?.id || ''] && commentsByConfession[selectedConfession?.id || ''].length > 0 ? commentsByConfession[selectedConfession?.id || ''].map((comment, idx) => {
                               const guestData = comment.guests && typeof comment.guests === 'object' ? (Array.isArray(comment.guests) ? comment.guests[0] : comment.guests) : null;
                               // Chỉ render khi đã có guest data đầy đủ
@@ -1226,7 +2044,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                               </div>
                             );
                             }) : (
-                              <div className="text-gray-500 text-xs italic text-center py-2">Chưa có bình luận</div>
+                              !selectedConfession.admin_comment && <div className="text-gray-500 text-xs italic text-center py-2">Chưa có bình luận</div>
                             )}
                           </div>
                         </div>
@@ -1251,7 +2069,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                   <button 
                     onClick={() => {
                       setIsEditing(false);
-                      setEditFile(null);
+                      setEditFiles([]);
                       setEditContent(selectedConfession.content);
                       setConfessionVisibility(selectedConfession.visibility || 'admin');
                     }}
@@ -1275,6 +2093,113 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                 </>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* LIKERS MODAL */}
+      {showLikersModal && (
+        <div 
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[110] flex items-center justify-center p-4"
+          onClick={() => setShowLikersModal(false)}
+        >
+          <div 
+            className="bg-[#111] border border-[#333] rounded-2xl max-w-sm w-full max-h-[60vh] flex flex-col shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="p-4 border-b border-[#222] flex items-center justify-between bg-[#0a0a0a]">
+              <h3 className="text-lg font-bold text-[#d4af37]">Những ai đã thích</h3>
+              <button 
+                onClick={() => setShowLikersModal(false)}
+                className="text-gray-400 hover:text-white transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Likers List */}
+            <div className="flex-1 overflow-y-auto">
+              {(likersByConfession[selectedConfessionForLikers?.id] || []).length > 0 ? (
+                <div className="space-y-2 p-4">
+                  {(likersByConfession[selectedConfessionForLikers?.id] || []).map((liker: any) => (
+                    <div 
+                      key={liker.id}
+                      className="flex items-center gap-3 p-3 bg-[#0f0f0f] rounded-xl hover:bg-[#1a1a1a] transition-colors border border-[#222] hover:border-[#333]"
+                    >
+                      <img 
+                        src={getAvatarUrl(liker.avatar_url || '', liker.name || 'Guest')}
+                        alt={liker.name}
+                        className="w-8 h-8 rounded-full object-cover border border-[#333]"
+                      />
+                      <div className="flex-1">
+                        <p className="text-gray-200 text-sm font-bold">
+                          {liker.name}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex items-center justify-center h-full text-gray-500 text-sm italic">
+                  Chưa có ai thích bài viết này
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* IMAGE PREVIEW MODAL */}
+      {showImagePreviewModal && (
+        <div 
+          className="fixed inset-0 bg-black/95 backdrop-blur-sm z-[120] flex items-center justify-center p-4"
+          onClick={() => setShowImagePreviewModal(false)}
+        >
+          <div 
+            className="relative max-w-4xl max-h-[90vh] w-full h-full flex flex-col items-center justify-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {previewImages.length > 0 ? (
+              <>
+                <img 
+                  src={previewImages[currentPreviewIndex]} 
+                  alt="Full preview" 
+                  className="max-w-full max-h-[80vh] object-contain rounded-lg"
+                />
+                {previewImages.length > 1 && (
+                  <div className="flex gap-4 mt-4">
+                    <button 
+                      onClick={() => setCurrentPreviewIndex(prev => prev > 0 ? prev - 1 : previewImages.length - 1)}
+                      className="bg-white/20 hover:bg-white/30 text-white px-4 py-2 rounded-lg font-bold transition-colors"
+                    >
+                      ← Trước
+                    </button>
+                    <span className="text-white/80 font-bold self-center">
+                      {currentPreviewIndex + 1} / {previewImages.length}
+                    </span>
+                    <button 
+                      onClick={() => setCurrentPreviewIndex(prev => prev < previewImages.length - 1 ? prev + 1 : 0)}
+                      className="bg-white/20 hover:bg-white/30 text-white px-4 py-2 rounded-lg font-bold transition-colors"
+                    >
+                      Tiếp →
+                    </button>
+                  </div>
+                )}
+              </>
+            ) : (
+              <img 
+                src={previewImageUrl} 
+                alt="Full preview" 
+                className="max-w-full max-h-full object-contain rounded-lg"
+              />
+            )}
+            <button 
+              onClick={() => setShowImagePreviewModal(false)}
+              className="absolute top-4 right-4 bg-black/60 hover:bg-black/80 text-white p-2 rounded-full transition-colors"
+            >
+              <X size={24} />
+            </button>
           </div>
         </div>
       )}

@@ -10,12 +10,13 @@ export async function POST(req: NextRequest) {
     }
 
     // Check if user already liked
-    const { data: existingLike } = await supabase
+    const { data: existingLikes } = await supabase
       .from("confession_likes")
       .select("*")
       .eq("confession_id", confessionId)
-      .eq("guest_id", guestId)
-      .single();
+      .eq("guest_id", guestId);
+
+    const existingLike = existingLikes && existingLikes.length > 0;
 
     if (existingLike) {
       // Unlike
@@ -36,6 +37,19 @@ export async function POST(req: NextRequest) {
       .from("confession_likes")
       .select("*", { count: "exact", head: true })
       .eq("confession_id", confessionId);
+
+    // Broadcast to all connected users about like change
+    await supabase.channel('likes-broadcast').send({
+      type: 'broadcast',
+      event: 'like_changed',
+      payload: {
+        confessionId,
+        guestId,
+        action: existingLike ? 'unlike' : 'like',
+        likeCount: count || 0,
+        timestamp: new Date().toISOString()
+      }
+    });
 
     return NextResponse.json({ 
       success: true, 
