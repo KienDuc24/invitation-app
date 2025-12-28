@@ -19,6 +19,9 @@ const playfair = Playfair_Display({
 export const metadata: Metadata = {
   title: "Thiệp Tốt Nghiệp 2025",
   description: "Trân trọng kính mời tham dự",
+  icons: {
+    icon: "/favicon.png",
+  },
 };
 
 export default function RootLayout({

@@ -5,15 +5,15 @@ import ChatGroup from "@/components/ChatGroup";
 import NetworkSection, { ChatGroupInfo } from "@/components/NetworkSection";
 import { supabase } from "@/lib/supabase";
 import {
-  ArrowLeft,
-  BellRing,
-  Camera,
-  Check,
-  Crown,
-  Edit3,
-  Heart,
-  HeartHandshake, ImagePlus,
-  Loader2, MessageCircle, Send, Share2, Ticket, Trash2, UserPlus, Users, X
+    ArrowLeft,
+    BellRing,
+    Camera,
+    Check,
+    Crown,
+    Edit3,
+    Heart,
+    HeartHandshake, ImagePlus,
+    Loader2, MessageCircle, Send, Share2, Ticket, Trash2, UserPlus, Users, X
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
@@ -523,7 +523,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
           if (permission === "granted") {
               new Notification("Đã bật thông báo!", { 
                   body: "Bạn sẽ nhận được tin nhắn ngay lập tức.",
-                  icon: getDisplayAvatar() || "/favicon.ico"
+                  icon: getDisplayAvatar() || "/favicon.png"
               });
           }
       }
@@ -1204,7 +1204,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                           </div>
 
                           {/* Comments List */}
-                          <div className="space-y-2 max-h-48 overflow-y-auto">
+                          <div className="space-y-2">
                             {commentsByConfession[selectedConfession?.id || ''] && commentsByConfession[selectedConfession?.id || ''].length > 0 ? commentsByConfession[selectedConfession?.id || ''].map((comment, idx) => {
                               const guestData = comment.guests && typeof comment.guests === 'object' ? (Array.isArray(comment.guests) ? comment.guests[0] : comment.guests) : null;
                               // Chỉ render khi đã có guest data đầy đủ
