@@ -1,10 +1,22 @@
 "use client";
 
 import { supabase } from "@/lib/supabase";
-import { 
-  Send, Image as ImageIcon, X, Loader2, Info, 
-  Users, Grid, Crown, ArrowLeft, ArrowDown, 
-  LogOut, UserPlus, Camera, Edit3, Save 
+import {
+    ArrowDown,
+    ArrowLeft,
+    Camera,
+    Crown,
+    Edit3,
+    Grid,
+    Image as ImageIcon,
+    Info,
+    Loader2,
+    LogOut,
+    Save,
+    Send,
+    UserPlus,
+    Users,
+    X
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
@@ -28,7 +40,7 @@ interface ChatGroupProps {
 export default function ChatGroup({ currentUser, groupTag, onBack, onLeaveGroup }: ChatGroupProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [isSending, setIsSending] = useState(false);
   
   // State thông tin nhóm
@@ -156,17 +168,21 @@ export default function ChatGroup({ currentUser, groupTag, onBack, onLeaveGroup 
 
   // --- 5. GỬI TIN NHẮN ---
   const handleSendMessage = async () => {
-    if ((!newMessage.trim() && !file) || isSending) return;
+    if ((!newMessage.trim() && files.length === 0) || isSending) return;
     setIsSending(true);
     try {
-      let imageUrl = null;
-      if (file) {
-        const fileExt = file.name.split('.').pop();
-        const fileName = `${groupTag}/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
-        const { error } = await supabase.storage.from('chat-media').upload(fileName, file);
-        if (!error) {
-            imageUrl = supabase.storage.from('chat-media').getPublicUrl(fileName).data.publicUrl;
-        }
+      let imageUrls: string[] = [];
+      if (files.length > 0) {
+        imageUrls = await Promise.all(files.map(async (file) => {
+          const fileExt = file.name.split('.').pop();
+          const fileName = `${groupTag}/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+          const { error } = await supabase.storage.from('chat-media').upload(fileName, file);
+          if (!error) {
+            return supabase.storage.from('chat-media').getPublicUrl(fileName).data.publicUrl;
+          }
+          return "";
+        }));
+        imageUrls = imageUrls.filter(url => url); // Loại bỏ URLs rỗng
       }
       
       const userAvatar = currentUser.avatar_url || currentUser.shortName || currentUser.name?.charAt(0) || '?';
@@ -177,12 +193,12 @@ export default function ChatGroup({ currentUser, groupTag, onBack, onLeaveGroup 
           sender_name: currentUser.name, 
           sender_avatar: userAvatar, 
           content: newMessage || "", 
-          image_url: imageUrl 
+          image_url: imageUrls.length > 0 ? JSON.stringify(imageUrls) : null 
       });
 
       if (!error) {
           setNewMessage(""); 
-          setFile(null); 
+          setFiles([]);
           markAsRead();
       }
     } catch (e) { 
@@ -288,6 +304,7 @@ export default function ChatGroup({ currentUser, groupTag, onBack, onLeaveGroup 
           {messages.map((msg, index) => {
             const isMe = String(msg.sender_id) === String(currentUser.id);
             const isHost = msg.sender_name?.includes("(Chủ tiệc)") || msg.sender_name?.includes("Admin");
+            const imageUrls = msg.image_url ? (msg.image_url.startsWith('[') ? JSON.parse(msg.image_url) : [msg.image_url]) : [];
             return (
               <div key={msg.id || index} className={`flex gap-3 ${isMe ? "flex-row-reverse" : ""}`}>
                 <div className="flex flex-col items-center gap-1">
@@ -298,9 +315,13 @@ export default function ChatGroup({ currentUser, groupTag, onBack, onLeaveGroup 
                 <div className={`max-w-[75%] space-y-1 ${isMe ? "items-end flex flex-col" : "items-start flex flex-col"}`}>
                     {!isMe && <span className="text-[10px] text-gray-500 ml-1">{msg.sender_name}</span>}
                     <div className={`p-3 rounded-2xl text-sm shadow-sm ${isMe ? "bg-[#d4af37] text-black rounded-tr-none" : "bg-[#222] text-gray-200 rounded-tl-none border border-[#333]"}`}>
-                       {msg.image_url && (
-                           <div className="mb-2 rounded-lg overflow-hidden cursor-pointer border border-black/10 group relative" onClick={() => setPreviewImage(msg.image_url!)}>
-                               <img src={msg.image_url} className="max-w-full h-auto object-cover max-h-60" loading="lazy" alt="shared"/>
+                       {imageUrls.length > 0 && (
+                           <div className={`mb-2 grid gap-2 ${imageUrls.length === 1 ? 'grid-cols-1' : imageUrls.length <= 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
+                               {imageUrls.map((url: string, idx: number) => (
+                                   <div key={idx} className="rounded-lg overflow-hidden cursor-pointer border border-black/10 group relative" onClick={() => setPreviewImage(url)}>
+                                       <img src={url} className="w-full h-auto object-cover max-h-60" loading="lazy" alt="shared"/>
+                                   </div>
+                               ))}
                            </div>
                        )}
                        {msg.content && <p className="whitespace-pre-wrap leading-relaxed break-words">{msg.content}</p>}
@@ -322,19 +343,29 @@ export default function ChatGroup({ currentUser, groupTag, onBack, onLeaveGroup 
 
         {/* INPUT */}
         <div className="p-3 bg-[#1a1a1a] border-t border-[#333]">
-          {file && (
-              <div className="flex items-center gap-3 mb-3 bg-[#111] p-2 rounded-lg border border-[#333] w-fit shadow-lg animate-in slide-in-from-bottom-2">
-                  <div className="w-12 h-12 relative rounded overflow-hidden border border-[#333]"><img src={URL.createObjectURL(file)} className="w-full h-full object-cover" alt="preview"/></div>
-                  <button onClick={() => setFile(null)} className="p-1.5 hover:bg-[#333] rounded-full text-gray-400 hover:text-red-400 transition-colors"><X size={14}/></button>
+          {files.length > 0 && (
+              <div className="flex items-center gap-2 mb-3 bg-[#111] p-2 rounded-lg border border-[#333] overflow-x-auto scrollbar-hide w-full shadow-lg animate-in slide-in-from-bottom-2">
+                  {files.map((file, idx) => (
+                      <div key={idx} className="flex items-center gap-2 bg-[#222] p-2 rounded border border-[#333] flex-shrink-0">
+                          <div className="w-10 h-10 relative rounded overflow-hidden border border-[#333]"><img src={URL.createObjectURL(file)} className="w-full h-full object-cover" alt={`preview-${idx}`}/></div>
+                          <button onClick={() => setFiles(prev => prev.filter((_, i) => i !== idx))} className="p-1.5 hover:bg-[#333] rounded text-gray-400 hover:text-red-400 transition-colors"><X size={14}/></button>
+                      </div>
+                  ))}
               </div>
           )}
           <div className="flex items-end gap-2">
             <button onClick={() => fileInputRef.current?.click()} className="p-3 rounded-xl bg-[#222] text-gray-400 hover:text-white border border-[#333]"><ImageIcon size={20} /></button>
-            <input type="file" ref={fileInputRef} hidden accept="image/*" onChange={(e) => e.target.files && setFile(e.target.files[0])}/>
+            <input type="file" ref={fileInputRef} hidden accept="image/*" multiple onChange={(e) => {
+              const newFiles = e.target.files ? Array.from(e.target.files) : [];
+              if (newFiles.length > 0) {
+                setFiles(prev => [...prev.slice(0, 9), ...newFiles].slice(0, 10)); // Max 10 files
+                e.target.value = ''; // Reset input
+              }
+            }}/>
             <div className="flex-1 bg-[#222] rounded-xl flex items-center px-3 py-1 border border-[#333]">
                 <textarea value={newMessage} onChange={(e) => setNewMessage(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }} placeholder="Nhập tin nhắn..." className="w-full bg-transparent border-none focus:ring-0 text-white text-sm max-h-24 py-2 resize-none placeholder:text-gray-600 scrollbar-hide focus:outline-none" rows={1}/>
             </div>
-            <button onClick={handleSendMessage} disabled={isSending || (!newMessage.trim() && !file)} className="p-3 rounded-xl bg-[#d4af37] text-black hover:bg-[#b89628] disabled:opacity-50 transition-all shadow-md active:scale-95">
+            <button onClick={handleSendMessage} disabled={isSending || (!newMessage.trim() && files.length === 0)} className="p-3 rounded-xl bg-[#d4af37] text-black hover:bg-[#b89628] disabled:opacity-50 transition-all shadow-md active:scale-95">
                 {isSending ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}
             </button>
           </div>
@@ -472,7 +503,14 @@ function ChatInfoSidebar({ groupTag, currentUser, onClose, messages, onLeave }: 
                 ) : (
                     <div className="grid grid-cols-3 gap-2">
                         {mediaList.length === 0 ? <div className="col-span-3 text-center text-gray-500 text-xs py-10">Chưa có ảnh nào</div> : 
-                            mediaList.map((m: any) => (<div key={m.id} className="aspect-square bg-[#222] rounded-lg overflow-hidden border border-[#333] cursor-pointer" onClick={() => window.open(m.image_url, '_blank')}><img src={m.image_url} className="w-full h-full object-cover" alt="media"/></div>))
+                            mediaList.flatMap((m: any) => {
+                              const urls = m.image_url ? (m.image_url.startsWith('[') ? JSON.parse(m.image_url) : [m.image_url]) : [];
+                              return urls.map((url: string, idx: number) => (
+                                <div key={`${m.id}-${idx}`} className="aspect-square bg-[#222] rounded-lg overflow-hidden border border-[#333] cursor-pointer" onClick={() => window.open(url, '_blank')}>
+                                  <img src={url} className="w-full h-full object-cover" alt="media"/>
+                                </div>
+                              ));
+                            })
                         }
                     </div>
                 )}

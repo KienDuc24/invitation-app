@@ -3,13 +3,16 @@
 import MobileInvitation from "@/components/3d/InvitationCard";
 import ChatGroup from "@/components/ChatGroup";
 import NetworkSection, { ChatGroupInfo } from "@/components/NetworkSection";
+import StoryTemplate from "@/components/StoryTemplate";
 import { supabase } from "@/lib/supabase";
+import html2canvas from "html2canvas";
 import {
   ArrowLeft,
   BellRing,
   Camera,
   Check,
   Crown,
+  Download,
   Edit3,
   Heart,
   HeartHandshake, ImagePlus,
@@ -88,6 +91,13 @@ export default function GuestDashboard({ guest }: DashboardProps) {
   const [previewImageUrl, setPreviewImageUrl] = useState<string>("");
   const [previewImages, setPreviewImages] = useState<string[]>([]);
   const [currentPreviewIndex, setCurrentPreviewIndex] = useState(0);
+
+  // --- STORY SHARE STATE ---
+  const [showStoryPreview, setShowStoryPreview] = useState(false);
+  const [storyPreviewImage, setStoryPreviewImage] = useState<string>("");
+  const [generatingStory, setGeneratingStory] = useState(false);
+  const [selectedConfessionForStory, setSelectedConfessionForStory] = useState<any>(null);
+  const storyTemplateRef = useRef<HTMLDivElement>(null);
 
   // --- 1. KHỞI TẠO AUDIO CONTEXT ---
   useEffect(() => {
@@ -438,6 +448,89 @@ export default function GuestDashboard({ guest }: DashboardProps) {
       
     } catch (error) {
       console.error('❌ [fetchComments] Error:', error);
+    }
+  };
+
+  // --- HÀM TẠO STORY CHIA SẺ ---
+  const handleGenerateStory = async (confession: any) => {
+    try {
+      setGeneratingStory(true);
+      setSelectedConfessionForStory(confession);
+      
+      // Delay để đảm bảo component đã render
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      if (!storyTemplateRef.current) {
+        throw new Error('Template ref not found');
+      }
+
+      // Capture template to canvas with CORS enabled
+      const canvas = await html2canvas(storyTemplateRef.current, {
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#0a0a0a',
+        scale: 2,
+        logging: false,
+      });
+
+      // Convert canvas to PNG data URL
+      const imageData = canvas.toDataURL('image/png');
+      setStoryPreviewImage(imageData);
+      setShowStoryPreview(true);
+      
+      console.log('✅ Story generated successfully');
+    } catch (error) {
+      console.error('❌ Error generating story:', error);
+      alert('Lỗi tạo Story. Vui lòng thử lại!');
+    } finally {
+      setGeneratingStory(false);
+    }
+  };
+
+  // --- HÀM TẢI STORY VỀ ---
+  const handleDownloadStory = () => {
+    if (!storyPreviewImage) return;
+    
+    const link = document.createElement('a');
+    link.href = storyPreviewImage;
+    link.download = `story-${selectedConfessionForStory?.id?.substring(0, 8) || 'kyniem'}.png`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // --- HÀM CHIA SẺ STORY ---
+  const handleShareStory = async () => {
+    try {
+      if (!storyPreviewImage) return;
+
+      // Convert data URL to Blob
+      const response = await fetch(storyPreviewImage);
+      const blob = await response.blob();
+
+      // Check if Web Share API is available
+      if (navigator.share) {
+        const file = new File([blob], 'story.png', { type: 'image/png' });
+        
+        await navigator.share({
+          files: [file],
+          title: 'Kỷ Niệm Đặc Biệt',
+          text: 'Chia sẻ kỷ niệm của tôi từ thiệp mời',
+        });
+        
+        console.log('✅ Story shared successfully');
+        setShowStoryPreview(false);
+        setSelectedConfessionForStory(null);
+      } else {
+        // Fallback: Just download if share not supported
+        handleDownloadStory();
+        alert('Chia sẻ qua Web Share API không được hỗ trợ. Ảnh đã được tải về!');
+      }
+    } catch (error: any) {
+      if (error.name !== 'AbortError') {
+        console.error('❌ Error sharing story:', error);
+        alert('Lỗi chia sẻ. Vui lòng thử lại!');
+      }
     }
   };
 
@@ -1661,9 +1754,14 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                               <Trash2 size={14}/>
                             </button>
                             {item.visibility === 'everyone' && (
-                              <button onClick={(e) => { e.stopPropagation(); handleShare(item); }} className="p-1.5 hover:bg-[#222] rounded-lg transition-colors text-green-400" title="Chia sẻ">
-                                <Share2 size={14} /> 
-                              </button>
+                              <>
+                                <button onClick={(e) => { e.stopPropagation(); handleGenerateStory(item); }} className="p-1.5 hover:bg-[#222] rounded-lg transition-colors text-[#d4af37]" title="Tạo Story">
+                                  <Camera size={14} /> 
+                                </button>
+                                <button onClick={(e) => { e.stopPropagation(); handleShare(item); }} className="p-1.5 hover:bg-[#222] rounded-lg transition-colors text-green-400" title="Chia sẻ">
+                                  <Share2 size={14} /> 
+                                </button>
+                              </>
                             )}
                           </div>
                         </div>
@@ -1708,9 +1806,14 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                           <div className="flex-1">
                             <p className="text-gray-200 text-sm leading-relaxed font-medium">{item.content}</p>
                           </div>
-                          <button onClick={(e) => { e.stopPropagation(); handleShare(item); }} className="p-1.5 hover:bg-[#222] rounded-lg transition-colors text-green-400" title="Chia sẻ">
-                            <Share2 size={14} /> 
-                          </button>
+                          <div className="flex gap-1">
+                            <button onClick={(e) => { e.stopPropagation(); handleGenerateStory(item); }} className="p-1.5 hover:bg-[#222] rounded-lg transition-colors text-[#d4af37]" title="Tạo Story">
+                              <Camera size={14} /> 
+                            </button>
+                            <button onClick={(e) => { e.stopPropagation(); handleShare(item); }} className="p-1.5 hover:bg-[#222] rounded-lg transition-colors text-green-400" title="Chia sẻ">
+                              <Share2 size={14} /> 
+                            </button>
+                          </div>
                         </div>
 
                         {/* Guest Interactions Footer */}
@@ -2123,8 +2226,13 @@ export default function GuestDashboard({ guest }: DashboardProps) {
               ) : (
                 <>
                   {selectedConfession.visibility === 'everyone' && (
-                    <button onClick={() => { handleShare(selectedConfession); setSelectedConfession(null); }} className="w-full py-3 bg-gradient-to-r from-[#d4af37] to-[#b89628] text-black font-bold rounded-xl flex items-center justify-center gap-2 uppercase text-xs tracking-widest">
-                      <Share2 size={16} /> Chia sẻ lên các nền tảng
+                    <button 
+                      onClick={() => { 
+                        handleGenerateStory(selectedConfession); 
+                      }} 
+                      className="w-full py-3 bg-gradient-to-r from-[#d4af37] to-[#b89628] text-black font-bold rounded-xl flex items-center justify-center gap-2 uppercase text-xs tracking-widest hover:shadow-lg hover:shadow-[#d4af37]/30 transition-all active:scale-95"
+                    >
+                      <Camera size={16} /> Tạo Story & Chia sẻ
                     </button>
                   )}
                   {selectedConfession.visibility !== 'everyone' && (
@@ -2241,6 +2349,74 @@ export default function GuestDashboard({ guest }: DashboardProps) {
               className="absolute top-4 right-4 bg-black/60 hover:bg-black/80 text-white p-2 rounded-full transition-colors"
             >
               <X size={24} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* HIDDEN STORY TEMPLATE - For html2canvas */}
+      <div style={{ position: 'fixed', left: '-9999px', top: '-9999px', zIndex: -1 }}>
+        <StoryTemplate
+          ref={storyTemplateRef}
+          content={selectedConfessionForStory?.content || ''}
+          author={selectedConfessionForStory?.guests?.name || 'Ẩn danh'}
+          avatarUrl={selectedConfessionForStory?.guests?.avatar_url}
+          date={selectedConfessionForStory ? new Date(selectedConfessionForStory.created_at).toLocaleDateString('vi-VN', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+          }) : ''}
+        />
+      </div>
+
+      {/* STORY PREVIEW MODAL */}
+      {showStoryPreview && storyPreviewImage && (
+        <div 
+          className="fixed inset-0 z-[999] bg-black/95 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setShowStoryPreview(false)}
+        >
+          <div 
+            className="w-full max-w-md max-h-[90vh] flex flex-col items-center justify-center gap-6 animate-in zoom-in-95"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Story Preview Image */}
+            <div className="relative rounded-2xl overflow-hidden shadow-2xl border-2 border-[#d4af37]/50 w-full max-w-sm aspect-[9/16] bg-black flex items-center justify-center">
+              <img
+                src={storyPreviewImage}
+                alt="Story preview"
+                className="w-full h-full object-cover"
+              />
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex gap-3 w-full max-w-sm">
+              {/* Download Button */}
+              <button
+                onClick={handleDownloadStory}
+                disabled={generatingStory}
+                className="flex-1 bg-[#d4af37] text-black font-bold py-3 rounded-xl flex items-center justify-center gap-2 hover:bg-[#c9a227] active:scale-95 transition-all disabled:opacity-50 uppercase text-xs tracking-widest shadow-lg shadow-[#d4af37]/20"
+              >
+                <Download size={18} />
+                Tải về
+              </button>
+
+              {/* Share Button */}
+              <button
+                onClick={handleShareStory}
+                disabled={generatingStory}
+                className="flex-1 bg-green-600 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 hover:bg-green-700 active:scale-95 transition-all disabled:opacity-50 uppercase text-xs tracking-widest shadow-lg shadow-green-600/20"
+              >
+                <Share2 size={18} />
+                Chia sẻ
+              </button>
+            </div>
+
+            {/* Close Button */}
+            <button
+              onClick={() => setShowStoryPreview(false)}
+              className="text-gray-400 hover:text-white transition-colors text-sm uppercase tracking-widest font-bold"
+            >
+              Đóng
             </button>
           </div>
         </div>

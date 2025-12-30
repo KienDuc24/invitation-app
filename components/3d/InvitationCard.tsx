@@ -5,9 +5,48 @@ import { ContactShadows, Environment, Float, OrbitControls, RoundedBox, Sparkles
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Bloom, EffectComposer, Noise, Vignette } from "@react-three/postprocessing";
 import { CheckCircle, Frown, Heart, ImagePlus, Loader2, MessageCircle, RefreshCw, RotateCcw, Send, Smartphone, Sparkles as SparklesIcon, Ticket, X } from "lucide-react";
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import * as THREE from "three";
+
+// --- DETECT SAFARI iOS ---
+const isSafariIOS = () => {
+    if (typeof navigator === 'undefined') return false;
+    const ua = navigator.userAgent;
+    return /iPad|iPhone|iPod/.test(ua) && /Safari/.test(ua) && !/Chrome/.test(ua);
+};
+
+// --- ERROR BOUNDARY ---
+class ErrorBoundary extends React.Component<any, any> {
+    constructor(props: any) {
+        super(props);
+        this.state = { hasError: false };
+    }
+    static getDerivedStateFromError() {
+        return { hasError: true };
+    }
+    componentDidCatch(error: any) {
+        console.error('3D Card Error:', error);
+    }
+    render() {
+        if (this.state.hasError) {
+            return (
+                <div className="fixed inset-0 z-[99999] bg-[#050505] flex items-center justify-center">
+                    <div className="text-center text-gray-400 px-4">
+                        <p className="text-sm mb-4">Không thể tải thiệp 3D</p>
+                        <button 
+                            onClick={() => window.location.reload()}
+                            className="px-4 py-2 bg-[#d4af37] text-black rounded-lg text-sm font-bold"
+                        >
+                            Tải lại trang
+                        </button>
+                    </div>
+                </div>
+            );
+        }
+        return this.props.children;
+    }
+}
 
 // Confetti Component
 const Confetti = ({ show }: { show: boolean }) => {
@@ -229,16 +268,32 @@ function HeroCard({ guestName, startIntro, eventInfo }: { guestName: string, sta
     const [cardStabilized, setCardStabilized] = useState(false);
 
     useFrame((state, delta) => {
-        if (!group.current || !startIntro) return;
-        const currentScale = group.current.scale.x;
-        const step = THREE.MathUtils.lerp(currentScale, targetScale, delta * 2.0);
-        group.current.scale.set(step, step, step);
-        group.current.rotation.y = THREE.MathUtils.lerp(group.current.rotation.y, 0, delta * 2.0);
-        if (!cardStabilized && Math.abs(group.current.rotation.y) < 0.1) { setCardStabilized(true); }
+        if (!group.current) return;
+        
+        if (startIntro && !cardStabilized) {
+            // Smooth intro animation - faster and more natural
+            const currentScale = group.current.scale.x;
+            const scaleFactor = THREE.MathUtils.lerp(currentScale, targetScale, delta * 3.5); // Faster scale
+            group.current.scale.set(scaleFactor, scaleFactor, scaleFactor);
+            
+            // Smooth rotation - faster spin
+            group.current.rotation.y = THREE.MathUtils.lerp(group.current.rotation.y, 0, delta * 3.0); // Faster rotation
+            
+            // Check if animation is complete
+            if (Math.abs(group.current.rotation.y) < 0.05 && Math.abs(currentScale - targetScale) < 0.01) { 
+                setCardStabilized(true);
+            }
+        }
+        
+        // Subtle floating animation after intro
+        if (cardStabilized) {
+            group.current.position.y = Math.sin(state.clock.elapsedTime * 0.5) * 0.15;
+            group.current.rotation.y = Math.sin(state.clock.elapsedTime * 0.3) * 0.08;
+        }
     });
 
     return (
-        <Float speed={2} rotationIntensity={0.2} floatIntensity={0.5}>
+        <Float speed={0.5} rotationIntensity={0} floatIntensity={0}>
             <group ref={group} scale={0.1} rotation={[0, -Math.PI * 1.5, 0]}>
                 <GraduationCap visible={cardStabilized} />
                 <group>
@@ -345,8 +400,8 @@ export default function MobileInvitation({
 
     useEffect(() => {
         if (isOpen && !isPortrait) {
-            // Delay một chút để Canvas render xong
-            const timer = setTimeout(() => setStartIntro(true), 500);
+            // Giảm delay để intro nhanh hơn
+            const timer = setTimeout(() => setStartIntro(true), 200);
             return () => clearTimeout(timer);
         } else {
             setStartIntro(false);
@@ -366,23 +421,35 @@ export default function MobileInvitation({
 
     useEffect(() => {
         if (!audioRef.current) {
-            audioRef.current = new Audio(MUSIC_URL);
-            audioRef.current.loop = true;
-            audioRef.current.volume = 0.5;
+            try {
+                audioRef.current = new Audio(MUSIC_URL);
+                audioRef.current.loop = true;
+                audioRef.current.volume = 0.5;
+            } catch (err) {
+                console.warn('Audio initialization failed:', err);
+            }
         }
         const audio = audioRef.current;
-        if (isOpen && !isPortrait) {
+        if (audio && isOpen && !isPortrait) {
             audio.play().catch(() => {});
-        } else {
+        } else if (audio) {
             audio.pause();
         }
-        return () => audio.pause();
+        return () => {
+            if (audio) audio.pause();
+        };
     }, [isOpen, isPortrait]);
 
     const handleCloseCard = () => {
         setIsClosing(true);
         setTimeout(() => {
-            if (audioRef.current) audioRef.current.pause();
+            if (audioRef.current) {
+                try {
+                    audioRef.current.pause();
+                } catch (err) {
+                    console.warn('Audio pause failed:', err);
+                }
+            }
             setIsOpen(false);
             setIsClosing(false);
             if (document.fullscreenElement) {
@@ -395,18 +462,24 @@ export default function MobileInvitation({
     const handleOpenCard = async () => {
         setIsOpen(true);
         try {
-            // Lock to landscape on mobile
-            const screenOrientation = screen.orientation as any;
-            if (screenOrientation?.lock) {
-                try {
-                    await screenOrientation.lock('landscape');
-                } catch (err) {
-                    console.log('Orientation lock not available:', err);
+            // Lock to landscape on mobile (Safari iOS không hỗ trợ)
+            try {
+                const screenOrientation = (screen as any).orientation;
+                if (screenOrientation && typeof screenOrientation.lock === 'function') {
+                    await screenOrientation.lock('landscape-primary').catch(() => {});
                 }
+            } catch (err) {
+                // Silent fail - Safari iOS không support orientation lock
             }
-            await document.documentElement.requestFullscreen();
+            
+            // Request fullscreen (Safari iOS limited support)
+            try {
+                await document.documentElement.requestFullscreen().catch(() => {});
+            } catch (err) {
+                // Silent fail - fullscreen might not be available
+            }
         } catch (err) {
-            console.log('Fullscreen not available:', err);
+            console.error('Error opening card:', err);
         }
     };
 
@@ -472,16 +545,17 @@ export default function MobileInvitation({
 
     return (
         <PortalOverlay>
-            <Confetti show={showConfetti} />
-            <div 
-                className="fixed inset-0 z-[99999] bg-[#050505] transition-opacity duration-300"
-                style={{
-                    fontFamily: 'Playfair Display, Georgia, serif',
-                    opacity: isClosing ? 0 : 1
-                }}
-                onTouchStart={handleTouchStart}
-                onTouchEnd={handleTouchEnd}
-            >
+            <ErrorBoundary>
+                <Confetti show={showConfetti} />
+                <div 
+                    className="fixed inset-0 z-[99999] bg-[#050505] transition-opacity duration-300"
+                    style={{
+                        fontFamily: 'Playfair Display, Georgia, serif',
+                        opacity: isClosing ? 0 : 1
+                    }}
+                    onTouchStart={handleTouchStart}
+                    onTouchEnd={handleTouchEnd}
+                >
                 {!isOpen ? (
                     <div className="absolute inset-0 z-20 flex flex-col items-center justify-center transition-all duration-1000 overflow-y-auto bg-[#050505]">
                         <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_#1a1a1a_0%,_#000_100%)]" />
@@ -655,14 +729,23 @@ export default function MobileInvitation({
                             ⚫ Fullscreen Mode
                         </div>
 
-                        <Canvas shadows camera={{ position: [0, 0, 15], fov: 30 }} gl={{ antialias: true, toneMapping: THREE.ReinhardToneMapping, toneMappingExposure: 1.0 }} dpr={[1, 2]}>
-                            <color attach="background" args={['#050505']} />
-                            <SceneSetup />
-                            <OrbitControls enableZoom={true} minDistance={10} maxDistance={25} autoRotate autoRotateSpeed={0.5} enablePan={false} maxPolarAngle={Math.PI / 1.5} minPolarAngle={Math.PI / 3} />
-                            <Suspense fallback={null}><HeroCard guestName={guestName} startIntro={startIntro} eventInfo={eventInfo} /></Suspense>
-                            <ContactShadows position={[0, -3.5, 0]} opacity={0.6} scale={20} blur={3} color="#000" />
-                            <EffectComposer enableNormalPass={false}><Bloom luminanceThreshold={1.2} mipmapBlur intensity={0.4} radius={0.6} /><Noise opacity={0.015} /><Vignette offset={0.3} darkness={0.6} /></EffectComposer>
-                        </Canvas>
+                        {!isSafariIOS() ? (
+                            <Canvas shadows camera={{ position: [0, 0, 15], fov: 30 }} gl={{ antialias: true, toneMapping: THREE.ReinhardToneMapping, toneMappingExposure: 1.0 }} dpr={[1, 2]}>
+                                <color attach="background" args={['#050505']} />
+                                <SceneSetup />
+                                <OrbitControls enableZoom={true} minDistance={10} maxDistance={25} autoRotate autoRotateSpeed={0.5} enablePan={false} maxPolarAngle={Math.PI / 1.5} minPolarAngle={Math.PI / 3} />
+                                <Suspense fallback={null}><HeroCard guestName={guestName} startIntro={startIntro} eventInfo={eventInfo} /></Suspense>
+                                <ContactShadows position={[0, -3.5, 0]} opacity={0.6} scale={20} blur={3} color="#000" />
+                                <EffectComposer enableNormalPass={false}><Bloom luminanceThreshold={1.2} mipmapBlur intensity={0.4} radius={0.6} /><Noise opacity={0.015} /><Vignette offset={0.3} darkness={0.6} /></EffectComposer>
+                            </Canvas>
+                        ) : (
+                            <div className="absolute inset-0 z-20 flex items-center justify-center">
+                                <div className="text-center text-gray-400">
+                                    <p className="mb-4">Safari iOS không hỗ trợ 3D</p>
+                                    <p className="text-sm text-gray-500">Vui lòng sử dụng Chrome hoặc Firefox</p>
+                                </div>
+                            </div>
+                        )}
 
                         {/* NAV BUTTON - HIDDEN IN FULLSCREEN MODE */}
                         {onTabChange && (
@@ -677,6 +760,7 @@ export default function MobileInvitation({
                     </>
                 )}
             </div>
+            </ErrorBoundary>
         </PortalOverlay>
     );
 }

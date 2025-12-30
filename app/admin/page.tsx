@@ -3,9 +3,9 @@
 import ChatGroup from "@/components/ChatGroup";
 import { supabase } from "@/lib/supabase";
 import {
-  BellRing,
   Calendar,
   CheckCircle,
+  ChevronLeft,
   Hash,
   Heart,
   Info,
@@ -43,6 +43,8 @@ export default function AdminPage() {
   const [chatGroups, setChatGroups] = useState<AdminGroupInfo[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<string>('general');
   const [unreadGroupTags, setUnreadGroupTags] = useState<string[]>([]);
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
+  const [showChatSidebar, setShowChatSidebar] = useState<boolean>(false);
   
   const [showImagePreviewModal, setShowImagePreviewModal] = useState(false);
   const [previewImages, setPreviewImages] = useState<string[]>([]);
@@ -433,7 +435,18 @@ export default function AdminPage() {
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
         if (payload.new.sender_id !== adminUser?.id) {
           playNotiSound();
-          setUnreadGroupTags(prev => [...new Set([...prev, payload.new.group_tag])]);
+          const groupTag = payload.new.group_tag;
+          
+          // Track unread groups
+          setUnreadGroupTags(prev => [...new Set([...prev, groupTag])]);
+          
+          // Track unread message count per group
+          if (selectedGroup !== groupTag) {
+            setUnreadCounts(prev => ({
+              ...prev,
+              [groupTag]: (prev[groupTag] || 0) + 1
+            }));
+          }
         }
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'confessions' }, (payload) => {
@@ -508,50 +521,50 @@ export default function AdminPage() {
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white font-sans pb-20">
       {/* Header tương đồng GuestDashboard */}
-      <div className="p-6 bg-gradient-to-b from-[#1a1a1a] to-transparent sticky top-0 z-50 backdrop-blur-md border-b border-[#333]/30">
+      <div className="p-3 md:p-6 bg-gradient-to-b from-[#1a1a1a] to-transparent sticky top-0 z-50 backdrop-blur-md border-b border-[#333]/30">
         <div className="max-w-6xl mx-auto flex justify-between items-center">
-          <div className="flex items-center gap-3">
-             <div className="w-10 h-10 rounded-full bg-[#d4af37] flex items-center justify-center text-black font-bold">AD</div>
+          <div className="flex items-center gap-2 md:gap-3">
+             <div className="w-8 md:w-10 h-8 md:h-10 rounded-full bg-[#d4af37] flex items-center justify-center text-black font-bold text-xs md:text-sm">AD</div>
              <div>
-                <h1 className="text-lg font-bold text-[#d4af37] uppercase tracking-wider">Quản trị viên</h1>
-                <p className="text-[10px] text-gray-500 uppercase font-bold">Hệ thống thiệp điện tử</p>
+                <h1 className="text-sm md:text-lg font-bold text-[#d4af37] uppercase tracking-wider">Quản trị viên</h1>
+                <p className="text-[8px] md:text-[10px] text-gray-500 uppercase font-bold">Hệ thống thiệp</p>
              </div>
           </div>
           <button onClick={fetchData} className="p-2 bg-[#222] rounded-full text-[#d4af37] hover:bg-[#333] transition-colors">
-             {loading ? <Loader2 size={18} className="animate-spin"/> : <RefreshCw size={18} />}
+             {loading ? <Loader2 size={16} className="animate-spin"/> : <RefreshCw size={16} />}
           </button>
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto p-4 space-y-8">
+      <div className="max-w-6xl mx-auto p-3 md:p-4 space-y-6 md:space-y-8">
         {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <StatCard label="Tổng khách" value={guests.filter(g => !g.tags?.includes('admin')).length} icon={<Users size={18}/>} color="text-blue-400" bg="bg-blue-400/10" />
-          <StatCard label="Tham dự" value={guests.filter(g => g.is_confirmed && g.attendance === 'Có tham dự').length} icon={<CheckCircle size={18}/>} color="text-green-400" bg="bg-green-400/10" />
-          <StatCard label="Lưu bút" value={confessions.length} icon={<MessageSquare size={18}/>} color="text-[#d4af37]" bg="bg-[#d4af37]/10" />
-          <StatCard label="Chưa rep" value={guests.filter(g => !g.is_confirmed && !g.tags?.includes('admin')).length} icon={<Loader2 size={18}/>} color="text-yellow-400" bg="bg-yellow-400/10" />
+        <div className="grid grid-cols-2 gap-2 md:gap-3">
+          <StatCard label="Tổng khách" value={guests.filter(g => !g.tags?.includes('admin')).length} icon={<Users size={16}/>} color="text-blue-400" bg="bg-blue-400/10" />
+          <StatCard label="Tham dự" value={guests.filter(g => g.is_confirmed && g.attendance === 'Có tham dự').length} icon={<CheckCircle size={16}/>} color="text-green-400" bg="bg-green-400/10" />
+          <StatCard label="Lưu bút" value={confessions.length} icon={<MessageSquare size={16}/>} color="text-[#d4af37]" bg="bg-[#d4af37]/10" />
+          <StatCard label="Chưa rep" value={guests.filter(g => !g.is_confirmed && !g.tags?.includes('admin')).length} icon={<Loader2 size={16}/>} color="text-yellow-400" bg="bg-yellow-400/10" />
         </div>
 
         {/* Tab Switcher */}
-        <div className="flex gap-4 border-b border-[#222] overflow-x-auto no-scrollbar">
-            <TabButton active={activeTab === 'overview'} onClick={() => setActiveTab('overview')} label="Khách mời" />
+        <div className="flex gap-2 md:gap-4 border-b border-[#222] overflow-x-auto no-scrollbar">
+            <TabButton active={activeTab === 'overview'} onClick={() => setActiveTab('overview')} label="Khách" />
             <TabButton active={activeTab === 'wishes'} onClick={() => setActiveTab('wishes')} label="Lưu bút" badge={confessions.length} />
-            <TabButton active={activeTab === 'chat'} onClick={() => setActiveTab('chat')} label="Tin nhắn" badge={unreadGroupTags.length} />
-            <TabButton active={activeTab === 'info'} onClick={() => setActiveTab('info')} label="Thông tin lễ" />
+            <TabButton active={activeTab === 'chat'} onClick={() => setActiveTab('chat')} label="Chat" badge={Object.values(unreadCounts).reduce((a, b) => a + b, 0)} />
+            <TabButton active={activeTab === 'info'} onClick={() => setActiveTab('info')} label="Thông tin" />
         </div>
 
         {/* --- TAB: LƯU BÚT (TÍNH NĂNG MỚI) --- */}
         {activeTab === 'wishes' && (
-           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in slide-in-from-bottom-4">
+           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6 animate-in slide-in-from-bottom-4">
              {confessions.length === 0 ? <p className="text-gray-500 italic text-center col-span-full py-20">Chưa có ai gửi tâm thư...</p> :
                confessions.map((item) => (
-                 <div key={item.id} className="bg-[#111] border border-[#333] rounded-[2rem] overflow-hidden flex flex-col shadow-xl group hover:border-[#d4af37]/40 transition-all cursor-pointer" onClick={() => {
+                 <div key={item.id} className="bg-[#111] border border-[#333] rounded-2xl md:rounded-[2rem] overflow-hidden flex flex-col shadow-xl group hover:border-[#d4af37]/40 transition-all cursor-pointer" onClick={() => {
                    setSelectedConfessionDetail(item);
                    setCurrentImageIndex(0);
                  }}>
                      {parseImageUrls(item.image_url).length > 0 && (
-                       <div className="relative bg-black h-48">
-                         <img src={parseImageUrls(item.image_url)[0]} className="w-full h-48 object-cover border-b border-[#222]" alt=""/>
+                       <div className="relative bg-black h-40 md:h-48">
+                         <img src={parseImageUrls(item.image_url)[0]} className="w-full h-40 md:h-48 object-cover border-b border-[#222]" alt=""/>
                          {parseImageUrls(item.image_url).length > 1 && (
                            <div className="absolute bottom-2 right-2 bg-black/70 text-white px-2 py-1 rounded text-xs font-bold">
                              {parseImageUrls(item.image_url).length}
@@ -559,36 +572,36 @@ export default function AdminPage() {
                          )}
                        </div>
                      )}
-                     <div className="p-5 flex-1 flex flex-col">
-                        <div className="flex items-center justify-between gap-3 mb-4">
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-full bg-[#d4af37] text-black flex items-center justify-center font-bold text-xs overflow-hidden border-2 border-black shadow-lg">
+                     <div className="p-3 md:p-5 flex-1 flex flex-col">
+                        <div className="flex items-center justify-between gap-2 md:gap-3 mb-3 md:mb-4">
+                            <div className="flex items-center gap-2 md:gap-3 min-w-0">
+                                <div className="w-9 md:w-10 h-9 md:h-10 rounded-full bg-[#d4af37] text-black flex items-center justify-center font-bold text-xs overflow-hidden border-2 border-black shadow-lg flex-shrink-0">
                                     {item.guests?.avatar_url ? <img src={item.guests.avatar_url} className="w-full h-full object-cover"/> : (item.guests?.name?.charAt(0) || "?")}
                                 </div>
-                                <div>
-                                    <p className="font-bold text-sm text-[#fadd7d]">{item.guests?.name || "Ẩn danh"}</p>
-                                    <p className="text-[10px] text-gray-500 font-mono">{new Date(item.created_at).toLocaleDateString()}</p>
+                                <div className="min-w-0">
+                                    <p className="font-bold text-xs md:text-sm text-[#fadd7d] truncate">{item.guests?.name || "Ẩn danh"}</p>
+                                    <p className="text-[9px] md:text-[10px] text-gray-500 font-mono">{new Date(item.created_at).toLocaleDateString()}</p>
                                 </div>
                             </div>
                             {item.visibility === 'everyone' ? (
-                                <span className="text-xs bg-green-500/20 text-green-400 px-2 py-1 rounded-full whitespace-nowrap font-bold">👥 Công khai</span>
+                                <span className="text-[10px] md:text-xs bg-green-500/20 text-green-400 px-2 py-1 rounded-full whitespace-nowrap font-bold flex-shrink-0">👥</span>
                             ) : (
-                                <span className="text-xs bg-gray-700/40 text-gray-300 px-2 py-1 rounded-full whitespace-nowrap font-bold">🔒 Private</span>
+                                <span className="text-[10px] md:text-xs bg-gray-700/40 text-gray-300 px-2 py-1 rounded-full whitespace-nowrap font-bold flex-shrink-0">🔒</span>
                             )}
                         </div>
-                        <p className="text-gray-300 text-sm italic leading-relaxed mb-6">{item.content}</p>
+                        <p className="text-gray-300 text-xs md:text-sm italic leading-relaxed mb-4 md:mb-6 line-clamp-3">{item.content}</p>
                         
                         {/* Social Media Style Footer */}
-                        <div className="mt-auto pt-4 border-t border-[#222] space-y-3">
+                        <div className="mt-auto pt-3 md:pt-4 border-t border-[#222] space-y-2 md:space-y-3">
                           {/* Interaction Stats */}
-                          <div className="flex items-center justify-between text-xs text-gray-500 font-bold px-0">
+                          <div className="flex items-center justify-between text-[9px] md:text-xs text-gray-500 font-bold px-0">
                             <div className="flex items-center gap-1">
-                              <Heart size={14} className="text-red-500" />
-                              <span>{(likesCounts[item.id] || 0) > 0 ? `${likesCounts[item.id]} lượt thích` : 'Chưa có thích'}</span>
+                              <Heart size={12} className="text-red-500" />
+                              <span>{(likesCounts[item.id] || 0) > 0 ? `${likesCounts[item.id]}` : '0'}</span>
                             </div>
                             <div className="flex items-center gap-1">
-                              <MessageCircle size={14} className="text-blue-400" />
-                              <span>{getCommentCount(item.id)} bình luận</span>
+                              <MessageCircle size={12} className="text-blue-400" />
+                              <span>{getCommentCount(item.id)}</span>
                             </div>
                           </div>
 
@@ -598,13 +611,12 @@ export default function AdminPage() {
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handleLikeConfession(item.id, item.likes_count);
-                                // Update UI
                                 setConfessions(confessions.map(c => c.id === item.id ? {...c, likes_count: (c.likes_count || 0) > 0 ? (c.likes_count || 0) - 1 : 1} : c));
                               }} 
-                              className="flex-1 flex items-center justify-center gap-1.5 text-xs font-bold py-2 rounded-lg transition-all bg-red-500/10 text-red-400 hover:bg-red-500/20"
+                              className="flex-1 flex items-center justify-center gap-1 text-[9px] md:text-xs font-bold py-2 rounded-lg transition-all bg-red-500/10 text-red-400 hover:bg-red-500/20 active:scale-95"
                             >
-                              <Heart size={14} className={item.likes_count > 0 ? "fill-red-500 text-red-500" : ""} /> 
-                              {item.likes_count > 0 ? 'Đã thích' : 'Thích'}
+                              <Heart size={12} className={item.likes_count > 0 ? "fill-red-500 text-red-500" : ""} /> 
+                              {item.likes_count > 0 ? 'Đã' : 'Thích'}
                             </button>
                             <button 
                               onClick={(e) => {
@@ -612,9 +624,9 @@ export default function AdminPage() {
                                 setSelectedConfessionDetail(item);
                                 setCurrentImageIndex(0);
                               }} 
-                              className="flex-1 flex items-center justify-center gap-1.5 text-xs font-bold py-2 rounded-lg transition-all bg-[#d4af37]/10 text-[#d4af37] hover:bg-[#d4af37]/20"
+                              className="flex-1 flex items-center justify-center gap-1 text-[9px] md:text-xs font-bold py-2 rounded-lg transition-all bg-[#d4af37]/10 text-[#d4af37] hover:bg-[#d4af37]/20 active:scale-95"
                             >
-                              <MessageCircle size={14} /> Bình luận
+                              <MessageCircle size={12} /> Rep
                             </button>
                           </div>
                         </div>
@@ -627,30 +639,30 @@ export default function AdminPage() {
 
         {/* --- TAB: THÔNG TIN LỄ (GIAO DIỆN MỚI) --- */}
         {activeTab === 'info' && (
-            <div className="max-w-2xl mx-auto space-y-6 animate-in slide-in-from-bottom-4">
-                <div className="bg-[#111] border border-[#333] p-8 rounded-[2.5rem] space-y-8 shadow-2xl relative overflow-hidden">
-                    <div className="flex items-center gap-3 border-b border-[#222] pb-6">
-                        <div className="w-12 h-12 bg-[#d4af37]/10 rounded-2xl flex items-center justify-center border border-[#d4af37]/20">
-                            <Info className="text-[#d4af37]" size={24} />
+            <div className="max-w-2xl mx-auto space-y-4 md:space-y-6 animate-in slide-in-from-bottom-4">
+                <div className="bg-[#111] border border-[#333] p-4 md:p-8 rounded-2xl md:rounded-[2.5rem] space-y-6 md:space-y-8 shadow-2xl relative overflow-hidden">
+                    <div className="flex items-center gap-2 md:gap-3 border-b border-[#222] pb-4 md:pb-6">
+                        <div className="w-10 md:w-12 h-10 md:h-12 bg-[#d4af37]/10 rounded-xl md:rounded-2xl flex items-center justify-center border border-[#d4af37]/20 flex-shrink-0">
+                            <Info className="text-[#d4af37]" size={20} />
                         </div>
-                        <div>
-                            <h3 className="text-lg font-bold text-white tracking-tight uppercase">Cấu hình thiệp mời</h3>
-                            <p className="text-xs text-gray-500">Nội dung hiển thị mặt sau cho tất cả khách</p>
+                        <div className="min-w-0">
+                            <h3 className="text-sm md:text-lg font-bold text-white tracking-tight uppercase">Cấu hình thiệp</h3>
+                            <p className="text-[8px] md:text-xs text-gray-500">Nội dung hiển thị cho khách</p>
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 font-sans">
-                        <InputField label="Thời gian" value={eventInfo.time_info} icon={<Calendar size={14}/>} placeholder="08:00 - 20/11" onChange={v => setEventInfo({...eventInfo, time_info: v})} />
-                        <InputField label="Liên hệ" value={eventInfo.contact_info} icon={<Phone size={14}/>} placeholder="SĐT Host..." onChange={v => setEventInfo({...eventInfo, contact_info: v})} />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 font-sans">
+                        <InputField label="Thời gian" value={eventInfo.time_info} icon={<Calendar size={14}/>} placeholder="08:00" onChange={v => setEventInfo({...eventInfo, time_info: v})} />
+                        <InputField label="Liên hệ" value={eventInfo.contact_info} icon={<Phone size={14}/>} placeholder="SĐT..." onChange={v => setEventInfo({...eventInfo, contact_info: v})} />
                         <div className="md:col-span-2 space-y-2">
-                            <label className="text-[10px] text-gray-500 uppercase font-black tracking-widest flex items-center gap-2 px-1"><MapPin size={12}/> Địa điểm</label>
-                            <textarea value={eventInfo.location_info || ""} onChange={e => setEventInfo({...eventInfo, location_info: e.target.value})} className="w-full bg-black border border-[#222] p-4 rounded-2xl text-sm focus:border-[#d4af37]/50 outline-none h-24 resize-none transition-all placeholder:text-gray-800" placeholder="Địa chỉ chi tiết..." />
+                            <label className="text-[9px] md:text-[10px] text-gray-500 uppercase font-black tracking-widest flex items-center gap-2 px-1"><MapPin size={12}/> Địa điểm</label>
+                            <textarea value={eventInfo.location_info || ""} onChange={e => setEventInfo({...eventInfo, location_info: e.target.value})} className="w-full bg-black border border-[#222] p-3 md:p-4 rounded-xl md:rounded-2xl text-xs md:text-sm focus:border-[#d4af37]/50 outline-none h-20 md:h-24 resize-none transition-all placeholder:text-gray-800" placeholder="Địa chỉ..." />
                         </div>
-                        <InputField label="Vị trí của bạn hiện tại" value={eventInfo.current_location} icon={<Map size={14}/>} placeholder="Sảnh A / Hội trường..." full onChange={v => setEventInfo({...eventInfo, current_location: v})} />
+                        <InputField label="Vị trí hiện tại" value={eventInfo.current_location} icon={<Map size={14}/>} placeholder="Sảnh..." full onChange={v => setEventInfo({...eventInfo, current_location: v})} />
                     </div>
 
-                    <button onClick={saveEventInfo} disabled={isSavingInfo} className="w-full bg-[#d4af37] text-black font-black py-4 rounded-2xl flex items-center justify-center gap-3 hover:scale-[1.01] active:scale-95 transition-all shadow-xl shadow-[#d4af37]/10 disabled:opacity-50 uppercase tracking-widest text-xs">
-                        {isSavingInfo ? <Loader2 className="animate-spin" size={20}/> : <Send size={20}/>} Lưu cài đặt
+                    <button onClick={saveEventInfo} disabled={isSavingInfo} className="w-full bg-[#d4af37] text-black font-black py-3 md:py-4 rounded-xl md:rounded-2xl flex items-center justify-center gap-2 md:gap-3 hover:scale-[1.01] active:scale-95 transition-all shadow-xl shadow-[#d4af37]/10 disabled:opacity-50 uppercase tracking-widest text-xs md:text-sm">
+                        {isSavingInfo ? <Loader2 className="animate-spin" size={18}/> : <Send size={18}/>} Lưu
                     </button>
                 </div>
             </div>
@@ -658,21 +670,19 @@ export default function AdminPage() {
 
         {/* Các Tab khác (Overview/Chat) giữ logic cũ */}
         {activeTab === 'overview' && (
-           <div className="bg-[#111] border border-[#333] rounded-[2rem] overflow-hidden shadow-xl animate-in fade-in">
+           <div className="bg-[#111] border border-[#333] rounded-2xl md:rounded-[2rem] overflow-hidden shadow-xl animate-in fade-in">
               <div className="overflow-x-auto">
-                <table className="w-full text-sm text-left">
-                  <thead className="text-[10px] text-gray-500 uppercase bg-[#1a1a1a] tracking-widest">
-                    <tr><th className="px-6 py-5">Tên khách</th><th className="px-6 py-5">Nhóm</th><th className="px-6 py-5">Trạng thái</th><th className="px-6 py-5">Lời nhắn</th></tr>
+                <table className="w-full text-xs md:text-sm text-left">
+                  <thead className="text-[9px] md:text-[10px] text-gray-500 uppercase bg-[#1a1a1a] tracking-widest">
+                    <tr><th className="px-3 md:px-6 py-3 md:py-5">Tên</th><th className="px-3 md:px-6 py-3 md:py-5">Nhóm</th><th className="px-3 md:px-6 py-3 md:py-5">Trạng thái</th><th className="px-3 md:px-6 py-3 md:py-5 hidden md:table-cell">Lời nhắn</th></tr>
                   </thead>
                   <tbody className="divide-y divide-[#222]">
                     {guests.filter(g => !g.tags?.includes('admin')).map((guest) => (
                       <tr key={guest.id} className="hover:bg-[#d4af37]/5 transition-colors">
-                        <td className="px-6 py-4 font-bold flex items-center gap-3 italic">
-                           {guest.name}
-                        </td>
-                        <td className="px-6 py-4"><span className="bg-black border border-[#333] px-2 py-1 rounded text-[10px] text-gray-500 uppercase font-bold">{guest.tags?.[0] || 'Khách'}</span></td>
-                        <td className="px-6 py-4 font-bold">{guest.is_confirmed ? (guest.attendance === 'Có tham dự' ? <span className="text-green-500">Tham gia</span> : <span className="text-red-500">Bận</span>) : <span className="text-gray-600">Chờ...</span>}</td>
-                        <td className="px-6 py-4 text-gray-500 italic truncate max-w-xs">{guest.wish || "-"}</td>
+                        <td className="px-3 md:px-6 py-3 md:py-4 font-bold text-xs md:text-sm italic truncate">{guest.name}</td>
+                        <td className="px-3 md:px-6 py-3 md:py-4"><span className="bg-black border border-[#333] px-2 py-0.5 md:py-1 rounded text-[8px] md:text-[10px] text-gray-500 uppercase font-bold whitespace-nowrap">{guest.tags?.[0] || 'Khách'}</span></td>
+                        <td className="px-3 md:px-6 py-3 md:py-4 font-bold text-xs">{guest.is_confirmed ? (guest.attendance === 'Có tham dự' ? <span className="text-green-500">Có</span> : <span className="text-red-500">Bận</span>) : <span className="text-gray-600">-</span>}</td>
+                        <td className="px-3 md:px-6 py-3 md:py-4 text-gray-500 italic truncate max-w-xs hidden md:table-cell text-[9px] md:text-xs">{guest.wish || "-"}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -681,30 +691,86 @@ export default function AdminPage() {
            </div>
         )}
 
-        {activeTab === 'chat' && (
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 h-[70vh] animate-in fade-in">
-                <div className="md:col-span-1 bg-[#111] border border-[#333] rounded-[2rem] p-4 flex flex-col h-full overflow-hidden">
-                    <h3 className="text-gray-500 font-bold text-[10px] uppercase mb-4 flex items-center gap-2 px-2"><BellRing size={14} className="text-[#d4af37]" /> Kênh Chat</h3>
-                    <div className="space-y-2 overflow-y-auto flex-1 pr-2 custom-scrollbar">
-                        {chatGroups.map(group => (
-                            <button key={group.tag} onClick={() => { setSelectedGroup(group.tag); setUnreadGroupTags(prev => prev.filter(t => t !== group.tag)); }} className={`w-full text-left p-4 rounded-2xl text-sm font-bold transition-all flex items-center gap-3 relative border ${selectedGroup === group.tag ? 'bg-[#d4af37] text-black' : 'bg-[#1a1a1a] text-gray-400 border-transparent hover:bg-[#222]'}`}>
-                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center overflow-hidden shrink-0 ${selectedGroup === group.tag ? 'bg-black/10' : 'bg-[#0a0a0a]'}`}>
-                                    {group.avatar_url ? <img src={group.avatar_url} className="w-full h-full object-cover" alt=""/> : <Hash size={14}/>}
-                                </div>
-                                <span className="truncate flex-1 font-sans">{group.name}</span>
-                                {unreadGroupTags.includes(group.tag) && <div className="w-2 h-2 bg-red-600 rounded-full animate-pulse shadow-[0_0_10px_red]"></div>}
-                            </button>
-                        ))}
+        {activeTab === 'chat' && !selectedGroup && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6 animate-in fade-in">
+              {chatGroups.length === 0 ? (
+                <p className="text-gray-500 italic text-center col-span-full py-20">Chưa có nhóm nào...</p>
+              ) : (
+                chatGroups.map(group => {
+                  const hasUnread = unreadGroupTags.includes(group.tag);
+                  const unreadCount = unreadCounts[group.tag] || 0;
+                  return (
+                    <button
+                      key={group.tag}
+                      onClick={() => {
+                        setSelectedGroup(group.tag);
+                        setUnreadGroupTags(prev => prev.filter(t => t !== group.tag));
+                        setUnreadCounts(prev => ({ ...prev, [group.tag]: 0 }));
+                      }}
+                      className={`relative border rounded-2xl md:rounded-3xl p-4 md:p-6 transition-all hover:scale-105 active:scale-95 text-left group ${hasUnread ? 'bg-gradient-to-br from-[#1a4d2e]/40 to-[#0a0a0a] border-[#10b981]/50 shadow-lg shadow-[#10b981]/20' : 'bg-[#111] border-[#333] hover:border-[#d4af37]/40'}`}
+                    >
+                      {/* Unread indicator */}
+                      {hasUnread && (
+                        <div className="absolute top-3 right-3 flex items-center gap-1.5 bg-red-600 px-2 py-1 rounded-full">
+                          <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+                          <span className="text-[9px] font-black text-white">{unreadCount}</span>
+                        </div>
+                      )}
+
+                      {/* Group Info */}
+                      <div className="flex items-center gap-3 md:gap-4 mb-4 md:mb-6">
+                        <div className={`w-12 md:w-14 h-12 md:h-14 rounded-xl flex items-center justify-center overflow-hidden flex-shrink-0 border-2 ${hasUnread ? 'border-[#10b981] bg-[#0a3d1f]/60' : 'border-[#333] bg-[#0a0a0a]'}`}>
+                          {group.avatar_url ? (
+                            <img src={group.avatar_url} className="w-full h-full object-cover" alt={group.name} />
+                          ) : (
+                            <Hash size={24} className="text-gray-500" />
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <h3 className={`font-bold text-sm md:text-base truncate ${hasUnread ? 'text-[#10b981]' : 'text-white'}`}>
+                            {group.name}
+                          </h3>
+                          <p className="text-[9px] md:text-xs text-gray-500 uppercase font-bold tracking-tight">#{group.tag}</p>
+                        </div>
+                      </div>
+
+                      {/* Status */}
+                      <div className="text-[8px] md:text-xs text-gray-400">
+                        {hasUnread ? (
+                          <span className="text-[#10b981] font-bold">● Có tin mới</span>
+                        ) : (
+                          <span>Nhóm trò chuyện</span>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+        )}
+
+        {activeTab === 'chat' && selectedGroup && (
+            <div className="h-full flex flex-col border border-[#333] rounded-[2rem] overflow-hidden bg-[#111] shadow-2xl animate-in fade-in relative" style={{height: 'calc(100vh - 350px)'}}>
+                {/* Header */}
+                <div className="absolute top-0 left-0 right-0 z-20 bg-[#1a1a1a]/90 p-2 md:p-3 border-b border-[#333] flex justify-between px-3 md:px-6 items-center h-12 md:h-14">
+                    <div className="flex items-center gap-2 md:gap-3 flex-1 min-w-0">
+                      <button
+                        onClick={() => setSelectedGroup('')}
+                        className="p-1.5 md:p-2 bg-[#222] text-[#d4af37] rounded-lg hover:bg-[#333] transition-colors flex-shrink-0"
+                      >
+                        <ChevronLeft size={18} />
+                      </button>
+                      <div className="min-w-0 flex-1">
+                        <span className="text-[9px] md:text-[10px] uppercase font-bold text-gray-500 tracking-tighter block truncate">#{selectedGroup}</span>
+                        <p className="text-[8px] md:text-xs text-gray-400 truncate">{chatGroups.find(g => g.tag === selectedGroup)?.name}</p>
+                      </div>
                     </div>
+                    <span className="text-[8px] md:text-[9px] bg-red-500/20 px-2 py-0.5 rounded text-red-400 font-bold uppercase whitespace-nowrap flex-shrink-0">Admin</span>
                 </div>
-                <div className="md:col-span-3 h-full flex flex-col border border-[#333] rounded-[2rem] overflow-hidden bg-[#111] shadow-2xl relative">
-                    <div className="absolute top-0 left-0 right-0 z-20 bg-[#1a1a1a]/90 p-3 border-b border-[#333] flex justify-between px-6 items-center">
-                        <span className="text-[10px] uppercase font-bold text-gray-500 tracking-tighter">Đang xem: <span className="text-[#d4af37]">#{selectedGroup}</span></span>
-                        <span className="text-[9px] bg-red-500/20 px-2 py-0.5 rounded text-red-400 font-bold uppercase">Chế độ Admin</span>
-                    </div>
-                    <div className="pt-10 h-full">
-                        {adminUser ? <ChatGroup currentUser={adminUser} groupTag={selectedGroup} onBack={() => {}} onLeaveGroup={() => {}} /> : <Loader2 className="animate-spin mx-auto mt-20 text-[#d4af37]"/>}
-                    </div>
+
+                {/* Chat Area */}
+                <div className="pt-12 md:pt-14 h-full">
+                    {adminUser ? <ChatGroup key={selectedGroup} currentUser={adminUser} groupTag={selectedGroup} onBack={() => setSelectedGroup('')} onLeaveGroup={() => {}} /> : <Loader2 className="animate-spin mx-auto mt-20 text-[#d4af37]"/>}
                 </div>
             </div>
         )}
@@ -712,23 +778,23 @@ export default function AdminPage() {
 
       {/* MODAL CHI TIẾT LƯU BÚT */}
       {selectedConfessionDetail && (
-        <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
-          <div className="w-full max-w-2xl h-[90vh] bg-[#111] border border-[#333] rounded-3xl overflow-hidden flex flex-col shadow-2xl animate-in zoom-in-95">
+        <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-sm flex items-center justify-center p-2 md:p-4 animate-in fade-in">
+          <div className="w-full max-w-2xl max-h-[95vh] bg-[#111] border border-[#333] rounded-2xl md:rounded-3xl overflow-hidden flex flex-col shadow-2xl animate-in zoom-in-95">
             {/* Header */}
-            <div className="flex items-center justify-between p-4 border-b border-[#222] bg-[#0a0a0a]">
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-[#d4af37] font-bold uppercase text-sm tracking-widest">Lưu bút từ {selectedConfessionDetail.guests?.name || 'Ẩn danh'}</h3>
+            <div className="flex items-center justify-between p-3 md:p-4 border-b border-[#222] bg-[#0a0a0a] flex-shrink-0">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-[#d4af37] font-bold text-xs md:text-sm uppercase tracking-widest truncate">{selectedConfessionDetail.guests?.name || 'Ẩn danh'}</h3>
                   {selectedConfessionDetail.visibility === 'everyone' ? (
-                    <span className="text-xs bg-green-500/20 text-green-400 px-2 py-1 rounded-full font-bold">👥 Công khai</span>
+                    <span className="text-[9px] md:text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full font-bold flex-shrink-0">👥</span>
                   ) : (
-                    <span className="text-xs bg-gray-700/40 text-gray-300 px-2 py-1 rounded-full font-bold">🔒 Private</span>
+                    <span className="text-[9px] md:text-xs bg-gray-700/40 text-gray-300 px-2 py-0.5 rounded-full font-bold flex-shrink-0">🔒</span>
                   )}
                 </div>
-                <p className="text-xs text-gray-500 mt-1">{new Date(selectedConfessionDetail.created_at).toLocaleDateString('vi-VN')}</p>
+                <p className="text-[8px] md:text-xs text-gray-500 mt-1">{new Date(selectedConfessionDetail.created_at).toLocaleDateString('vi-VN')}</p>
               </div>
-              <button onClick={() => setSelectedConfessionDetail(null)} className="p-2 hover:bg-[#222] rounded-full transition-colors">
-                <X size={20} className="text-gray-400"/>
+              <button onClick={() => setSelectedConfessionDetail(null)} className="p-1.5 md:p-2 hover:bg-[#222] rounded-full transition-colors flex-shrink-0">
+                <X size={18} className="text-gray-400"/>
               </button>
             </div>
 
@@ -736,14 +802,14 @@ export default function AdminPage() {
             <div className="flex-1 overflow-y-auto flex flex-col">
               {/* Ảnh */}
               {parseImageUrls(selectedConfessionDetail.image_url).length > 0 && (
-                <div className="relative bg-black">
+                <div className="relative bg-black flex-shrink-0">
                   {(() => {
                     const images = parseImageUrls(selectedConfessionDetail.image_url);
                     return (
                       <>
                         <img 
                           src={images[currentImageIndex]} 
-                          className="w-full h-auto max-h-[50%] object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                          className="w-full h-auto max-h-[40vh] md:max-h-[50%] object-cover cursor-pointer hover:opacity-90 transition-opacity"
                           alt={`Kỷ niệm ${currentImageIndex + 1}`}
                           onClick={() => {
                             setPreviewImages(images);
@@ -753,19 +819,19 @@ export default function AdminPage() {
                         />
                         {images.length > 1 && (
                           <>
-                            <div className="absolute bottom-4 right-4 bg-black/70 text-white px-3 py-1 rounded-full text-xs font-bold">
+                            <div className="absolute bottom-2 right-2 bg-black/70 text-white px-2 py-1 rounded text-[9px] md:text-xs font-bold">
                               {currentImageIndex + 1}/{images.length}
                             </div>
-                            <div className="absolute bottom-4 left-4 flex gap-2">
+                            <div className="absolute bottom-2 left-2 flex gap-1 md:gap-2">
                               <button 
                                 onClick={() => setCurrentImageIndex(prev => prev > 0 ? prev - 1 : images.length - 1)}
-                                className="bg-white/20 hover:bg-white/30 text-white px-2 py-1 rounded text-xs font-bold transition-colors"
+                                className="bg-white/20 hover:bg-white/30 text-white px-1.5 md:px-2 py-1 rounded text-xs font-bold transition-colors"
                               >
                                 ←
                               </button>
                               <button 
                                 onClick={() => setCurrentImageIndex(prev => prev < images.length - 1 ? prev + 1 : 0)}
-                                className="bg-white/20 hover:bg-white/30 text-white px-2 py-1 rounded text-xs font-bold transition-colors"
+                                className="bg-white/20 hover:bg-white/30 text-white px-1.5 md:px-2 py-1 rounded text-xs font-bold transition-colors"
                               >
                                 →
                               </button>
@@ -779,32 +845,32 @@ export default function AdminPage() {
               )}
 
               {/* Nội dung */}
-              <div className="p-6 space-y-6 flex-1">
+              <div className="p-3 md:p-6 space-y-4 md:space-y-6 flex-1 overflow-y-auto">
                 <div className="space-y-2">
-                  <p className="text-gray-400 text-xs uppercase font-black tracking-widest">Nội dung</p>
-                  <p className="text-gray-100 text-lg leading-relaxed italic">{selectedConfessionDetail.content}</p>
+                  <p className="text-gray-400 text-[9px] md:text-xs uppercase font-black tracking-widest">Nội dung</p>
+                  <p className="text-gray-100 text-sm md:text-lg leading-relaxed italic">{selectedConfessionDetail.content}</p>
                 </div>
 
                 {/* Thông tin người gửi */}
-                <div className="flex items-center gap-3 p-3 bg-black/40 rounded-xl border border-[#222]">
-                  <div className="w-12 h-12 rounded-full bg-[#d4af37] text-black flex items-center justify-center font-bold overflow-hidden border-2 border-black">
+                <div className="flex items-center gap-2 md:gap-3 p-2 md:p-3 bg-black/40 rounded-xl border border-[#222]">
+                  <div className="w-9 md:w-12 h-9 md:h-12 rounded-full bg-[#d4af37] text-black flex items-center justify-center font-bold text-xs md:text-sm overflow-hidden border-2 border-black flex-shrink-0">
                     {selectedConfessionDetail.guests?.avatar_url ? (
                       <img src={selectedConfessionDetail.guests.avatar_url} className="w-full h-full object-cover"/>
                     ) : (
                       selectedConfessionDetail.guests?.name?.charAt(0) || "?"
                     )}
                   </div>
-                  <div>
-                    <p className="font-bold text-sm text-[#fadd7d]">{selectedConfessionDetail.guests?.name || 'Ẩn danh'}</p>
-                    <p className="text-xs text-gray-500">Gửi vào {new Date(selectedConfessionDetail.created_at).toLocaleTimeString('vi-VN')}</p>
+                  <div className="min-w-0">
+                    <p className="font-bold text-xs md:text-sm text-[#fadd7d] truncate">{selectedConfessionDetail.guests?.name || 'Ẩn danh'}</p>
+                    <p className="text-[8px] md:text-xs text-gray-500">Gửi vào {new Date(selectedConfessionDetail.created_at).toLocaleTimeString('vi-VN')}</p>
                   </div>
                 </div>
 
                 {/* LIKE & COMMENT SECTION - Social Media Style */}
-                <div className="space-y-4 border-t border-[#222] pt-4">
+                <div className="space-y-3 md:space-y-4 border-t border-[#222] pt-3 md:pt-4">
                   {/* Like Count & Likers */}
                   <div className="space-y-2">
-                    <div className="text-gray-500 text-xs uppercase font-bold flex items-center gap-2">
+                    <div className="text-gray-500 text-[9px] md:text-xs uppercase font-bold flex items-center gap-2">
                       <button
                         onClick={() => {
                           const newAdminLikeStatus = (selectedConfessionDetail.likes_count || 0) > 0 ? 0 : 1;
@@ -813,9 +879,7 @@ export default function AdminPage() {
                           setSelectedConfessionDetail({...selectedConfessionDetail, likes_count: newAdminLikeStatus});
                           setLikesCounts(prev => ({...prev, [selectedConfessionDetail.id]: newTotalCount}));
                           
-                          // Update likersByConfession when admin likes/unlikes
                           if (newAdminLikeStatus === 1) {
-                            // Admin is liking - add admin to likers list
                             setLikersByConfession(prev => ({
                               ...prev,
                               [selectedConfessionDetail.id]: [
@@ -829,35 +893,32 @@ export default function AdminPage() {
                               ]
                             }));
                           } else {
-                            // Admin is unliking - remove admin from likers list
                             setLikersByConfession(prev => ({
                               ...prev,
                               [selectedConfessionDetail.id]: (prev[selectedConfessionDetail.id] || []).filter(l => !l.isAdmin)
                             }));
                           }
                         }}
-                        className="text-red-500 hover:scale-110 transition-transform"
+                        className="text-red-500 hover:scale-110 transition-transform active:scale-95"
                       >
                         <Heart size={14} className={selectedConfessionDetail.likes_count > 0 ? "fill-red-500" : ""} /> 
                       </button>
                       {(likesCounts[selectedConfessionDetail.id] || 0) > 0 && (
                         <button
                           onClick={() => {
-                            console.log('👥 [Admin] Opening likers modal for:', selectedConfessionDetail.id);
-                            console.log('📊 [Admin] Current likersByConfession:', likersByConfession[selectedConfessionDetail.id]);
                             setSelectedConfessionForLikers(selectedConfessionDetail);
                             setShowLikersModal(true);
                           }}
                           className="hover:text-[#d4af37] transition-colors"
                         >
-                          {likesCounts[selectedConfessionDetail.id]} {(likesCounts[selectedConfessionDetail.id] || 0) === 1 ? 'lượt thích' : 'lượt thích'}
+                          {likesCounts[selectedConfessionDetail.id]}
                         </button>
                       )}
                     </div>
                     {(likesCounts[selectedConfessionDetail.id] || 0) > 0 && (
                       <div className="flex items-center gap-2 flex-wrap">
                         {(likersByConfession[selectedConfessionDetail.id] || []).slice(0, 5).map((liker: any, idx: number) => (
-                          <div key={idx} className="w-8 h-8 rounded-full bg-[#d4af37] text-black flex items-center justify-center font-bold text-xs overflow-hidden border border-[#d4af37] cursor-pointer" title={liker.name}>
+                          <div key={idx} className="w-8 h-8 rounded-full bg-[#d4af37] text-black flex items-center justify-center font-bold text-xs overflow-hidden border border-[#d4af37] cursor-pointer flex-shrink-0" title={liker.name}>
                             {liker.avatar_url ? (
                               <img src={liker.avatar_url} className="w-full h-full object-cover" alt={liker.name}/>
                             ) : (
@@ -871,9 +932,9 @@ export default function AdminPage() {
                               setSelectedConfessionForLikers(selectedConfessionDetail);
                               setShowLikersModal(true);
                             }}
-                            className="text-xs text-gray-400 ml-2 hover:text-[#d4af37] transition-colors"
+                            className="text-[9px] md:text-xs text-gray-400 ml-2 hover:text-[#d4af37] transition-colors"
                           >
-                            +{(likersByConfession[selectedConfessionDetail.id]?.length || 0) - 5} người khác
+                            +{(likersByConfession[selectedConfessionDetail.id]?.length || 0) - 5}
                           </button>
                         )}
                       </div>
@@ -882,26 +943,25 @@ export default function AdminPage() {
 
                   {/* Comments Section */}
                   {commentsByConfession[selectedConfessionDetail.id]?.length > 0 && (
-                    <div className="space-y-3">
-                      <p className="text-gray-500 text-xs uppercase font-bold">
-                        💬 {commentsByConfession[selectedConfessionDetail.id]?.length || 0} bình luận
+                    <div className="space-y-2 md:space-y-3">
+                      <p className="text-gray-500 text-[9px] md:text-xs uppercase font-bold">
+                        💬 {commentsByConfession[selectedConfessionDetail.id]?.length || 0}
                       </p>
                       
-                      <div className="space-y-3">
-                        {/* User Comments */}
+                      <div className="space-y-2 md:space-y-3">
                         {commentsByConfession[selectedConfessionDetail.id]?.map((comment: any, idx: number) => (
-                          <div key={idx} className="p-3 bg-black/30 rounded-xl space-y-1">
+                          <div key={idx} className="p-2 md:p-3 bg-black/30 rounded-xl space-y-1">
                             <div className="flex items-center gap-2">
-                              <div className="w-6 h-6 rounded-full bg-[#d4af37] text-black flex items-center justify-center font-bold text-xs overflow-hidden border border-[#d4af37]">
+                              <div className="w-6 h-6 rounded-full bg-[#d4af37] text-black flex items-center justify-center font-bold text-xs overflow-hidden border border-[#d4af37] flex-shrink-0">
                                 {comment.guests?.avatar_url ? (
                                   <img src={comment.guests.avatar_url} className="w-full h-full object-cover" alt={comment.guests?.name}/>
                                 ) : (
                                   comment.guests?.name?.charAt(0) || "?"
                                 )}
                               </div>
-                              <span className="font-bold text-sm text-[#fadd7d]">{comment.guests?.name || 'Ẩn danh'}</span>
+                              <span className="font-bold text-xs md:text-sm text-[#fadd7d] truncate">{comment.guests?.name || 'Ẩn danh'}</span>
                             </div>
-                            <p className="text-gray-200 text-sm ml-8">{comment.content}</p>
+                            <p className="text-gray-200 text-xs md:text-sm ml-8">{comment.content}</p>
                           </div>
                         ))}
                       </div>
@@ -909,27 +969,27 @@ export default function AdminPage() {
                   )}
 
                   {/* Comment Input Section */}
-                  <div className="border-t border-[#222] pt-4 space-y-3">
-                    <div className="flex items-start gap-3">
-                      <div className="w-8 h-8 rounded-full bg-[#d4af37] text-black flex items-center justify-center font-bold text-xs overflow-hidden border border-[#d4af37] flex-shrink-0 mt-2">
+                  <div className="border-t border-[#222] pt-3 md:pt-4 space-y-2 md:space-y-3">
+                    <div className="flex items-start gap-2 md:gap-3">
+                      <div className="w-7 md:w-8 h-7 md:h-8 rounded-full bg-[#d4af37] text-black flex items-center justify-center font-bold text-xs overflow-hidden border border-[#d4af37] flex-shrink-0 mt-1">
                         {adminUser?.avatar_url ? (
                           <img src={adminUser.avatar_url} className="w-full h-full object-cover" alt="admin"/>
                         ) : (
                           adminUser?.name?.charAt(0) || "A"
                         )}
                       </div>
-                      <div className="flex-1 space-y-2">
+                      <div className="flex-1 space-y-1 md:space-y-2">
                         <div className="flex items-center gap-2">
-                          <span className="font-bold text-xs text-[#fadd7d]">{adminUser?.name || 'Admin'}</span>
-                          <span className="text-xs text-gray-500">Admin</span>
+                          <span className="font-bold text-xs md:text-sm text-[#fadd7d]">{adminUser?.name || 'Admin'}</span>
+                          <span className="text-[8px] md:text-xs text-gray-500">Admin</span>
                         </div>
-                        <div className="flex gap-2">
+                        <div className="flex gap-1 md:gap-2">
                           <input
                             type="text"
                             value={commentInput[selectedConfessionDetail.id] || ""}
                             onChange={(e) => setCommentInput(prev => ({ ...prev, [selectedConfessionDetail.id]: e.target.value }))}
                             placeholder="Viết bình luận..."
-                            className="flex-1 bg-black border border-[#333] rounded-lg px-3 py-2 text-xs text-gray-200 focus:border-[#d4af37] outline-none placeholder:text-gray-600"
+                            className="flex-1 bg-black border border-[#333] rounded-lg px-2 md:px-3 py-1.5 md:py-2 text-xs text-gray-200 focus:border-[#d4af37] outline-none placeholder:text-gray-600"
                           />
                           <button
                             onClick={() => {
@@ -937,9 +997,9 @@ export default function AdminPage() {
                               setCommentInput(prev => ({ ...prev, [selectedConfessionDetail.id]: "" }));
                             }}
                             disabled={!commentInput[selectedConfessionDetail.id]?.trim()}
-                            className="bg-[#d4af37] text-black px-3 py-2 rounded-lg font-bold text-xs uppercase disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#c9a227] transition-colors"
+                            className="bg-[#d4af37] text-black px-2 md:px-3 py-1.5 md:py-2 rounded-lg font-bold text-xs uppercase disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#c9a227] transition-colors active:scale-95 flex-shrink-0"
                           >
-                            Gửi
+                            G
                           </button>
                         </div>
                       </div>
@@ -1002,39 +1062,34 @@ export default function AdminPage() {
 
       {/* LIKERS MODAL */}
       {showLikersModal && selectedConfessionForLikers && (
-        <div className="fixed inset-0 z-[110] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
-          <div className="w-full max-w-md bg-[#111] border border-[#333] rounded-3xl overflow-hidden flex flex-col shadow-2xl animate-in zoom-in-95 max-h-[80vh]">
+        <div className="fixed inset-0 z-[110] bg-black/90 backdrop-blur-sm flex items-center justify-center p-2 md:p-4 animate-in fade-in">
+          <div className="w-full max-w-md max-h-[90vh] bg-[#111] border border-[#333] rounded-2xl md:rounded-3xl overflow-hidden flex flex-col shadow-2xl animate-in zoom-in-95">
             {/* Header */}
-            <div className="flex items-center justify-between p-4 border-b border-[#222] bg-[#0a0a0a]">
-              <h3 className="text-[#d4af37] font-bold uppercase text-sm tracking-widest">
-                {(() => {
-                  console.log('👥 [Admin Modal] Rendering likers for:', selectedConfessionForLikers.id);
-                  console.log('📊 [Admin Modal] Likers array:', likersByConfession[selectedConfessionForLikers.id] || []);
-                  console.log('💯 [Admin Modal] Count:', likesCounts[selectedConfessionForLikers.id]);
-                  return likesCounts[selectedConfessionForLikers.id] || 0;
-                })()}  Lượt thích
+            <div className="flex items-center justify-between p-3 md:p-4 border-b border-[#222] bg-[#0a0a0a] flex-shrink-0">
+              <h3 className="text-[#d4af37] font-bold uppercase text-xs md:text-sm tracking-widest">
+                {likesCounts[selectedConfessionForLikers.id] || 0}  👍
               </h3>
-              <button onClick={() => setShowLikersModal(false)} className="p-2 hover:bg-[#222] rounded-full transition-colors">
-                <X size={20} className="text-gray-400"/>
+              <button onClick={() => setShowLikersModal(false)} className="p-1.5 md:p-2 hover:bg-[#222] rounded-full transition-colors">
+                <X size={18} className="text-gray-400"/>
               </button>
             </div>
 
             {/* Likers List */}
             <div className="flex-1 overflow-y-auto">
-              <div className="space-y-2 p-4">
+              <div className="space-y-2 p-3 md:p-4">
                 {(likersByConfession[selectedConfessionForLikers.id] || []).map((liker: any, idx: number) => (
-                  <div key={idx} className="flex items-center gap-3 p-3 bg-black/30 rounded-xl hover:bg-black/50 transition-colors">
-                    <div className="w-10 h-10 rounded-full bg-[#d4af37] text-black flex items-center justify-center font-bold text-sm overflow-hidden border-2 border-[#d4af37] flex-shrink-0">
+                  <div key={idx} className="flex items-center gap-2 md:gap-3 p-2 md:p-3 bg-black/30 rounded-xl hover:bg-black/50 transition-colors">
+                    <div className="w-9 md:w-10 h-9 md:h-10 rounded-full bg-[#d4af37] text-black flex items-center justify-center font-bold text-sm overflow-hidden border-2 border-[#d4af37] flex-shrink-0">
                       {liker.avatar_url ? (
                         <img src={liker.avatar_url} className="w-full h-full object-cover" alt={liker.name}/>
                       ) : (
                         liker.name?.charAt(0) || "?"
                       )}
                     </div>
-                    <div className="flex-1">
-                      <p className="font-bold text-sm text-[#fadd7d]">{liker.name || 'Ẩn danh'}</p>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-bold text-xs md:text-sm text-[#fadd7d] truncate">{liker.name || 'Ẩn danh'}</p>
                       {liker.isAdmin && (
-                        <p className="text-xs text-[#d4af37] font-bold">Admin</p>
+                        <p className="text-[8px] md:text-xs text-[#d4af37] font-bold">Admin</p>
                       )}
                     </div>
                   </div>
@@ -1051,30 +1106,30 @@ export default function AdminPage() {
 // --- Component phụ ---
 function StatCard({ label, value, icon, color, bg }: any) {
   return (
-    <div className="bg-[#111] border border-[#333] p-4 rounded-3xl flex items-center gap-4 transition-all hover:scale-[1.02]">
-      <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${bg} ${color}`}>{icon}</div>
-      <div className="font-sans"><p className="text-gray-500 text-[10px] uppercase font-black tracking-widest opacity-60">{label}</p><p className="text-xl font-bold">{value}</p></div>
+    <div className="bg-[#111] border border-[#333] p-3 md:p-4 rounded-2xl md:rounded-3xl flex items-center gap-2 md:gap-4 transition-all hover:scale-[1.02]">
+      <div className={`w-9 md:w-10 h-9 md:h-10 rounded-lg md:rounded-2xl flex items-center justify-center ${bg} ${color} flex-shrink-0`}>{icon}</div>
+      <div className="font-sans min-w-0"><p className="text-gray-500 text-[8px] md:text-[10px] uppercase font-black tracking-widest opacity-60 line-clamp-1">{label}</p><p className="text-lg md:text-xl font-bold">{value}</p></div>
     </div>
   );
 }
 
 function TabButton({ active, onClick, label, badge }: any) {
   return (
-    <button onClick={onClick} className={`px-4 py-3 text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap border-b-2 flex items-center gap-2 ${active ? 'text-[#d4af37] border-[#d4af37]' : 'text-gray-600 border-transparent hover:text-white'}`}>
+    <button onClick={onClick} className={`px-2 md:px-4 py-2 md:py-3 text-[9px] md:text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap border-b-2 flex items-center gap-1.5 md:gap-2 ${active ? 'text-[#d4af37] border-[#d4af37]' : 'text-gray-600 border-transparent hover:text-white'}`}>
         {label}
-        {badge > 0 && <span className="bg-red-600 text-white text-[8px] px-1.5 py-0.5 rounded-full animate-bounce">{badge}</span>}
+        {badge > 0 && <span className="bg-red-600 text-white text-[8px] px-1 py-0.5 rounded-full animate-bounce flex-shrink-0">{badge}</span>}
     </button>
   );
 }
 
 function InputField({ label, value, icon, placeholder, full, onChange }: { label: string; value: string; icon: React.ReactNode; placeholder: string; full?: boolean; onChange: (v: string) => void }) {
     return (
-        <div className={`space-y-2 ${full ? 'md:col-span-2' : ''}`}>
-            <label className="text-[10px] text-gray-500 uppercase font-black tracking-widest flex items-center gap-2 px-1">{icon} {label}</label>
+        <div className={`space-y-1.5 md:space-y-2 ${full ? 'md:col-span-2' : ''}`}>
+            <label className="text-[8px] md:text-[10px] text-gray-500 uppercase font-black tracking-widest flex items-center gap-2 px-1">{icon} {label}</label>
             <input 
                 value={value || ""} 
                 onChange={e => onChange(e.target.value)} 
-                className="w-full bg-black border border-[#222] p-4 rounded-2xl text-sm focus:border-[#d4af37]/50 outline-none transition-all placeholder:text-gray-800" 
+                className="w-full bg-black border border-[#222] p-2.5 md:p-4 rounded-xl md:rounded-2xl text-xs md:text-sm focus:border-[#d4af37]/50 outline-none transition-all placeholder:text-gray-800" 
                 placeholder={placeholder} 
             />
         </div>
