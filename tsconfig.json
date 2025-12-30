@@ -33,7 +33,3 @@
     "node_modules"
   ]
 }
-    "**/*.mts"
-  ],
-  "exclude": ["node_modules"]
-}

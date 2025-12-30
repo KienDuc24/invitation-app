@@ -2,6 +2,7 @@
 
 import MobileInvitation from "@/components/3d/InvitationCard";
 import ChatGroup from "@/components/ChatGroup";
+import FilmStoryTemplate from "@/components/FilmStoryTemplate";
 import NetworkSection, { ChatGroupInfo } from "@/components/NetworkSection";
 import StoryTemplate from "@/components/StoryTemplate";
 import { supabase } from "@/lib/supabase";
@@ -98,6 +99,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
   const [generatingStory, setGeneratingStory] = useState(false);
   const [selectedConfessionForStory, setSelectedConfessionForStory] = useState<any>(null);
   const storyTemplateRef = useRef<HTMLDivElement>(null);
+  const [storyViewMode, setStoryViewMode] = useState<'classic' | 'film'>('film'); // Story type selector
 
   // --- 1. KHỞI TẠO AUDIO CONTEXT ---
   useEffect(() => {
@@ -471,6 +473,11 @@ export default function GuestDashboard({ guest }: DashboardProps) {
         backgroundColor: '#0a0a0a',
         scale: 2,
         logging: false,
+        imageTimeout: 0,
+        ignoreElements: (el: Element) => {
+          // Ignore style tags to prevent CSS parsing errors
+          return el.tagName === 'STYLE' || el.tagName === 'SCRIPT';
+        },
       });
 
       // Convert canvas to PNG data URL
@@ -493,7 +500,8 @@ export default function GuestDashboard({ guest }: DashboardProps) {
     
     const link = document.createElement('a');
     link.href = storyPreviewImage;
-    link.download = `story-${selectedConfessionForStory?.id?.substring(0, 8) || 'kyniem'}.png`;
+    const id = selectedConfessionForStory?.id || 'kyniem';
+    link.download = `story-${typeof id === 'string' ? id.substring(0, 8) : 'kyniem'}.png`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -2355,77 +2363,331 @@ export default function GuestDashboard({ guest }: DashboardProps) {
       )}
 
       {/* HIDDEN STORY TEMPLATE - For html2canvas */}
+      <style>{`
+        @layer components {
+          * { --tw-*: initial; }
+        }
+      `}</style>
       <div style={{ position: 'fixed', left: '-9999px', top: '-9999px', zIndex: -1 }}>
-        <StoryTemplate
-          ref={storyTemplateRef}
-          content={selectedConfessionForStory?.content || ''}
-          author={selectedConfessionForStory?.guests?.name || 'Ẩn danh'}
-          avatarUrl={selectedConfessionForStory?.guests?.avatar_url}
-          date={selectedConfessionForStory ? new Date(selectedConfessionForStory.created_at).toLocaleDateString('vi-VN', {
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-          }) : ''}
-        />
+        {storyViewMode === 'classic' ? (
+          <StoryTemplate
+            ref={storyTemplateRef}
+            content={selectedConfessionForStory?.content || ''}
+            author={(selectedConfessionForStory?.guest?.name || selectedConfessionForStory?.guests?.name) || 'Ẩn danh'}
+            avatarUrl={selectedConfessionForStory?.guest?.avatar_url || selectedConfessionForStory?.guests?.avatar_url}
+            date={selectedConfessionForStory ? new Date(selectedConfessionForStory.created_at).toLocaleDateString('vi-VN', {
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit',
+            }) : ''}
+            postImage={selectedConfessionForStory?.image_url ? (Array.isArray(selectedConfessionForStory.image_url) ? selectedConfessionForStory.image_url[0] : selectedConfessionForStory.image_url) : undefined}
+            likesCount={getLikeCount(selectedConfessionForStory?.id)}
+            commentsCount={getCommentCount(selectedConfessionForStory?.id)}
+            commentsList={commentsByConfession[selectedConfessionForStory?.id]?.slice(0, 3).map((c: any) => ({
+              author: c.guests?.name || 'Ẩn danh',
+              text: c.content,
+              avatar: c.guests?.avatar_url,
+            }))}
+          />
+        ) : (
+          <FilmStoryTemplate
+            ref={storyTemplateRef}
+            content={selectedConfessionForStory?.content || ''}
+            author={(selectedConfessionForStory?.guest?.name || selectedConfessionForStory?.guests?.name) || 'Ẩn danh'}
+            avatarUrl={selectedConfessionForStory?.guest?.avatar_url || selectedConfessionForStory?.guests?.avatar_url}
+            date={selectedConfessionForStory ? new Date(selectedConfessionForStory.created_at).toLocaleDateString('vi-VN', {
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit',
+            }) : ''}
+            postImage={selectedConfessionForStory?.image_url ? (Array.isArray(selectedConfessionForStory.image_url) ? selectedConfessionForStory.image_url[0] : selectedConfessionForStory.image_url) : undefined}
+            commentsList={commentsByConfession[selectedConfessionForStory?.id]?.slice(0, 3).map((c: any) => ({
+              author: c.guests?.name || 'Ẩn danh',
+              text: c.content,
+              avatar: c.guests?.avatar_url,
+            })) || []}
+            likesCount={getLikeCount(selectedConfessionForStory?.id)}
+          />
+        )}
       </div>
 
       {/* STORY PREVIEW MODAL */}
-      {showStoryPreview && storyPreviewImage && (
+      {showStoryPreview && (
         <div 
-          className="fixed inset-0 z-[999] bg-black/95 backdrop-blur-sm flex items-center justify-center p-4"
-          onClick={() => setShowStoryPreview(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 999,
+            backgroundColor: storyViewMode === 'film' ? 'black' : 'rgba(0, 0, 0, 0.95)',
+            backdropFilter: storyViewMode === 'classic' ? 'blur(4px)' : 'none',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: storyViewMode === 'classic' ? '16px' : '0',
+            cursor: storyViewMode === 'classic' ? 'pointer' : 'default',
+          }}
+          onClick={() => storyViewMode === 'classic' && setShowStoryPreview(false)}
         >
-          <div 
-            className="w-full max-w-md max-h-[90vh] flex flex-col items-center justify-center gap-6 animate-in zoom-in-95"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Story Preview Image */}
-            <div className="relative rounded-2xl overflow-hidden shadow-2xl border-2 border-[#d4af37]/50 w-full max-w-sm aspect-[9/16] bg-black flex items-center justify-center">
-              <img
-                src={storyPreviewImage}
-                alt="Story preview"
-                className="w-full h-full object-cover"
+          {/* Film Mode - Show Interactive Component */}
+          {storyViewMode === 'film' ? (
+            <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+              <FilmStoryTemplate
+                content={selectedConfessionForStory?.content || ''}
+                author={(selectedConfessionForStory?.guest?.name || selectedConfessionForStory?.guests?.name) || 'Ẩn danh'}
+                avatarUrl={selectedConfessionForStory?.guest?.avatar_url || selectedConfessionForStory?.guests?.avatar_url}
+                date={selectedConfessionForStory ? new Date(selectedConfessionForStory.created_at).toLocaleDateString('vi-VN', {
+                  year: 'numeric',
+                  month: '2-digit',
+                  day: '2-digit',
+                }) : ''}
+                postImage={selectedConfessionForStory?.image_url ? (Array.isArray(selectedConfessionForStory.image_url) ? selectedConfessionForStory.image_url[0] : selectedConfessionForStory.image_url) : undefined}
+                commentsList={commentsByConfession[selectedConfessionForStory?.id]?.slice(0, 3).map((c: any) => ({
+                  author: c.guests?.name || 'Ẩn danh',
+                  text: c.content,
+                  avatar: c.guests?.avatar_url,
+                })) || []}
+                likesCount={getLikeCount(selectedConfessionForStory?.id)}
               />
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex gap-3 w-full max-w-sm">
-              {/* Download Button */}
+              {/* Close button for Film mode */}
               <button
-                onClick={handleDownloadStory}
-                disabled={generatingStory}
-                className="flex-1 bg-[#d4af37] text-black font-bold py-3 rounded-xl flex items-center justify-center gap-2 hover:bg-[#c9a227] active:scale-95 transition-all disabled:opacity-50 uppercase text-xs tracking-widest shadow-lg shadow-[#d4af37]/20"
+                onClick={() => setShowStoryPreview(false)}
+                style={{
+                  position: 'absolute',
+                  top: '24px',
+                  right: '24px',
+                  width: '40px',
+                  height: '40px',
+                  borderRadius: '50%',
+                  backgroundColor: 'rgba(0, 0, 0, 0.6)',
+                  border: 'none',
+                  color: 'white',
+                  fontSize: '24px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  zIndex: 1000,
+                }}
               >
-                <Download size={18} />
-                Tải về
-              </button>
-
-              {/* Share Button */}
-              <button
-                onClick={handleShareStory}
-                disabled={generatingStory}
-                className="flex-1 bg-green-600 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 hover:bg-green-700 active:scale-95 transition-all disabled:opacity-50 uppercase text-xs tracking-widest shadow-lg shadow-green-600/20"
-              >
-                <Share2 size={18} />
-                Chia sẻ
+                ✕
               </button>
             </div>
-
-            {/* Close Button */}
-            <button
-              onClick={() => setShowStoryPreview(false)}
-              className="text-gray-400 hover:text-white transition-colors text-sm uppercase tracking-widest font-bold"
+          ) : (
+            /* Classic Mode - Show Image Preview */
+            <div 
+              style={{
+                width: '100%',
+                maxWidth: '448px',
+                maxHeight: '90vh',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '24px',
+                animation: 'fadeIn 0.3s ease-out',
+              }}
+              onClick={(e) => e.stopPropagation()}
             >
-              Đóng
-            </button>
-          </div>
+              {/* View Mode Selector */}
+              <div
+                style={{
+                  display: 'flex',
+                  gap: '8px',
+                  backgroundColor: '#1a1a1a',
+                  borderRadius: '12px',
+                  padding: '4px',
+                  border: '1px solid #333',
+                  width: '100%',
+                  maxWidth: '448px',
+                }}
+              >
+                <button
+                  onClick={() => setStoryViewMode('classic')}
+                  style={{
+                    flex: 1,
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    backgroundColor: (storyViewMode as string) === 'classic' ? '#d4af37' : 'transparent',
+                    color: (storyViewMode as string) === 'classic' ? 'black' : '#a0a0a0',
+                    fontWeight: 'bold',
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                  } as React.CSSProperties}
+                  title="Kinh điển"
+                >
+                  ✨ Kinh Điển
+                </button>
+                <button
+                  onClick={() => setStoryViewMode('film')}
+                  style={{
+                    flex: 1,
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    backgroundColor: (storyViewMode as string) === 'film' ? '#d4af37' : 'transparent',
+                    color: (storyViewMode as string) === 'film' ? 'black' : '#a0a0a0',
+                    fontWeight: 'bold',
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                  } as React.CSSProperties}
+                  title="Thước phim kỷ niệm"
+                >
+                  🎬 Thước Phim
+                </button>
+              </div>
+
+              {/* Story Preview Image */}
+              <div 
+                style={{
+                  position: 'relative',
+                  borderRadius: '16px',
+                  overflow: 'hidden',
+                  boxShadow: '0 20px 25px rgba(0, 0, 0, 0.5)',
+                  border: '2px solid rgba(212, 175, 55, 0.5)',
+                  width: '100%',
+                  maxWidth: '448px',
+                  aspectRatio: '9 / 16',
+                  backgroundColor: 'black',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                {storyPreviewImage && (
+                  <img
+                    src={storyPreviewImage}
+                    alt="Story preview"
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover',
+                    }}
+                  />
+                )}
+              </div>
+
+              {/* Action Buttons */}
+              <div 
+                style={{
+                  display: 'flex',
+                  gap: '12px',
+                  width: '100%',
+                  maxWidth: '448px',
+                }}
+              >
+                {/* Download Button */}
+                <button
+                  onClick={handleDownloadStory}
+                  disabled={generatingStory}
+                  style={{
+                    flex: 1,
+                    backgroundColor: '#d4af37',
+                    color: 'black',
+                    fontWeight: 'bold',
+                    padding: '12px 16px',
+                    borderRadius: '12px',
+                    border: 'none',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    cursor: generatingStory ? 'not-allowed' : 'pointer',
+                    textTransform: 'uppercase',
+                    fontSize: '12px',
+                    letterSpacing: '1px',
+                    boxShadow: '0 4px 15px rgba(212, 175, 55, 0.2)',
+                    opacity: generatingStory ? 0.5 : 1,
+                    transition: 'all 0.3s ease',
+                  }}
+                  onMouseEnter={(e) => !generatingStory && (e.currentTarget.style.backgroundColor = '#c9a227')}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#d4af37')}
+                >
+                  <Download size={18} />
+                  Tải về
+                </button>
+
+                {/* Share Button */}
+                <button
+                  onClick={handleShareStory}
+                  disabled={generatingStory}
+                  style={{
+                    flex: 1,
+                    backgroundColor: '#16a34a',
+                    color: 'white',
+                    fontWeight: 'bold',
+                    padding: '12px 16px',
+                    borderRadius: '12px',
+                    border: 'none',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    cursor: generatingStory ? 'not-allowed' : 'pointer',
+                    textTransform: 'uppercase',
+                    fontSize: '12px',
+                    letterSpacing: '1px',
+                    boxShadow: '0 4px 15px rgba(22, 163, 74, 0.2)',
+                    opacity: generatingStory ? 0.5 : 1,
+                    transition: 'all 0.3s ease',
+                  }}
+                  onMouseEnter={(e) => !generatingStory && (e.currentTarget.style.backgroundColor = '#15803d')}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#16a34a')}
+                >
+                  <Share2 size={18} />
+                  Chia sẻ
+                </button>
+              </div>
+
+              {/* Close Button */}
+              <button
+                onClick={() => setShowStoryPreview(false)}
+                style={{
+                  color: '#a0a0a0',
+                  backgroundColor: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  textTransform: 'uppercase',
+                  fontSize: '12px',
+                  letterSpacing: '1px',
+                  fontWeight: 'bold',
+                  transition: 'color 0.3s ease',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = 'white')}
+                onMouseLeave={(e) => (e.currentTarget.style.color = '#a0a0a0')}
+              >
+                Đóng
+              </button>
+            </div>
+          )}
         </div>
       )}
 
       {/* BOTTOM NAV - Ẩn khi ở tab 'card' */}
       {activeTab !== 'card' && (
-        <div className="fixed bottom-6 left-6 right-6 z-50 animate-in slide-in-from-bottom-4 duration-300">
-          <div className="bg-[#111]/90 backdrop-blur-xl border border-[#333] rounded-2xl p-2 flex justify-between shadow-2xl max-w-md mx-auto transition-all">
+        <div style={{
+          position: 'fixed',
+          bottom: '24px',
+          left: '24px',
+          right: '24px',
+          zIndex: 50,
+          animation: 'slideInFromBottom 0.3s ease-out',
+        }}>
+          <div style={{
+            backgroundColor: 'rgba(17, 17, 17, 0.9)',
+            backdropFilter: 'blur(24px)',
+            border: '1px solid #333',
+            borderRadius: '18px',
+            padding: '8px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            boxShadow: '0 20px 25px rgba(0, 0, 0, 0.5)',
+            maxWidth: '448px',
+            margin: '0 auto',
+            transition: 'all 0.3s ease',
+          }}>
               <NavButton active={activeTab === 'wish'} icon={<Ticket size={20} />} label="Lưu bút" onClick={() => setActiveTab('wish')} />
               <NavButton active={activeTab === 'chat'} icon={<Users size={20} />} label="Kết nối" onClick={() => setActiveTab('chat')} badge={unreadCount} />
               <NavButton active={false} icon={<ImagePlus size={20} />} label="Xem thiệp" onClick={() => setActiveTab('card')} />
@@ -2438,12 +2700,69 @@ export default function GuestDashboard({ guest }: DashboardProps) {
 
 function NavButton({ active, icon, label, onClick, badge }: any) {
   return (
-    <button onClick={onClick} className={`flex-1 flex flex-col items-center justify-center gap-1 py-3 rounded-xl transition-all duration-300 ${active ? 'bg-[#d4af37] text-black shadow-lg shadow-[#d4af37]/20 -translate-y-1' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}>
-      <div className="relative">
+    <button 
+      onClick={onClick} 
+      style={{
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '4px',
+        padding: '12px 0',
+        borderRadius: '12px',
+        transition: 'all 0.3s ease',
+        backgroundColor: active ? '#d4af37' : 'transparent',
+        color: active ? 'black' : '#808080',
+        border: 'none',
+        cursor: 'pointer',
+      }}
+      onMouseEnter={(e) => {
+        if (!active) {
+          (e.currentTarget as HTMLButtonElement).style.color = 'white';
+          (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'rgba(255, 255, 255, 0.05)';
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (!active) {
+          (e.currentTarget as HTMLButtonElement).style.color = '#808080';
+          (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent';
+        }
+      }}
+    >
+      <div style={{ position: 'relative' }}>
         {icon}
-        {badge > 0 && <span className={`absolute -top-2 -right-2 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-600 px-1 text-[9px] font-bold text-white ring-2 ${active ? 'ring-[#d4af37]' : 'ring-[#111]'}`}>{badge > 9 ? '9+' : badge}</span>}
+        {badge > 0 && (
+          <span style={{
+            position: 'absolute',
+            top: '-8px',
+            right: '-8px',
+            display: 'flex',
+            height: '16px',
+            minWidth: '16px',
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderRadius: '9999px',
+            backgroundColor: '#dc2626',
+            padding: '0 4px',
+            fontSize: '9px',
+            fontWeight: 'bold',
+            color: 'white',
+            border: `2px solid ${active ? '#d4af37' : '#111'}`,
+            boxShadow: `0 0 0 2px ${active ? '#d4af37' : '#111'}`,
+          }}>
+            {badge > 9 ? '9+' : badge}
+          </span>
+        )}
       </div>
-      <span className="text-[9px] font-bold uppercase tracking-wider">{label}</span>
+      <span style={{
+        fontSize: '9px',
+        fontWeight: 'bold',
+        textTransform: 'uppercase',
+        letterSpacing: '0.05em',
+      }}>
+        {label}
+      </span>
     </button>
   );
 }
