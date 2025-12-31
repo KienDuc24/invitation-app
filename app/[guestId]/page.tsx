@@ -46,12 +46,12 @@ export default async function GuestPage({ params }: GuestPageProps) {
         />
       )}
 
-      {/* 2. Catmi Chat - Truyền thêm guestInfor */}
+      {/* 2. Catmi Chat - Truyền thêm guestId */}
       <CatmiChat 
-          guestName={guest.name} 
+          guestName={guest.id}
           guestStatus={isConfirmed}
-          guestTags={guest.tags} // Mảng tags: ['Bạn cấp 3', 'Thân thiết']
-          guestInfor={guest.infor} // 👇 TRUYỀN THÔNG TIN MỚI (Hỗ trợ cả 'infor' và 'info')
+          guestTags={guest.tags}
+          guestInfor={guest.infor}
       />
     </>
   );

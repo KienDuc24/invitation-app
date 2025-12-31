@@ -8,16 +8,16 @@ import StoryTemplate from "@/components/StoryTemplate";
 import { supabase } from "@/lib/supabase";
 import html2canvas from "html2canvas";
 import {
-  ArrowLeft,
-  BellRing,
-  Camera,
-  Check,
-  Crown,
-  Download,
-  Edit3,
-  Heart,
-  HeartHandshake, ImagePlus,
-  Loader2, MessageCircle, Send, Share2, Ticket, Trash2, UserPlus, Users, X
+    ArrowLeft,
+    BellRing,
+    Camera,
+    Check,
+    Crown,
+    Download,
+    Edit3,
+    Heart,
+    HeartHandshake, ImagePlus,
+    Loader2, MessageCircle, Send, Share2, Ticket, Trash2, UserPlus, Users, X
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 

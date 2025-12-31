@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, Send, Sparkles, X, ZoomIn } from "lucide-react";
+import { Loader2, Send, Sparkles, Trash2, X } from "lucide-react";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 
@@ -47,12 +47,68 @@ export default function CatmiChat({ guestName, guestStatus, guestTags, guestInfo
   
   // State mới: Quản lý xem ảnh phóng to
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [userName, setUserName] = useState<string | null>(null);
+  const sessionIdRef = useRef<string | null>(null);
 
   const [messages, setMessages] = useState<{role: string, content: string, type?: string}[]>([
     { role: 'assistant', content: `Chào ${guestName || 'đằng ấy'}! Catmi nè 🔥. Cần hỏi gì về buổi tiệc hơm?` }
   ]);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Load messages from localStorage khi component mount
+  useEffect(() => {
+    const initChat = async () => {
+      try {
+        const saved = localStorage.getItem('catmi_chat_history');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setMessages(parsed);
+          }
+        }
+        // Use guestName from props or get from localStorage
+        const name = guestName || localStorage.getItem('guest_name');
+        if (name) {
+          setUserName(name);
+          // Tạo session nếu chưa có
+          if (!sessionIdRef.current) {
+            try {
+              const sessionRes = await fetch('/api/chat/sessions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  guest_id: name,
+                  title: `Catmi Chat - ${name} - ${new Date().toLocaleString('vi-VN')}`
+                }),
+              });
+              const sessionData = await sessionRes.json();
+              if (sessionData && sessionData.id) {
+                sessionIdRef.current = sessionData.id;
+                console.log('✅ Chat session created:', sessionData.id);
+              } else if (sessionData && sessionData.error) {
+                console.warn('⚠️ Session creation warning:', sessionData.error);
+              }
+            } catch (sessionError) {
+              console.error('❌ Failed to create chat session:', sessionError);
+            }
+          }
+        }
+      } catch (e) {
+        console.error('Failed to initialize chat:', e);
+      }
+    };
+    initChat();
+  }, []);
+
+  // Save messages to localStorage whenever they change
+  useEffect(() => {
+    try {
+      localStorage.setItem('catmi_chat_history', JSON.stringify(messages));
+    } catch (e) {
+      console.error('Failed to save chat history:', e);
+    }
+  }, [messages]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -136,6 +192,48 @@ export default function CatmiChat({ guestName, guestStatus, guestTags, guestInfo
 
           setMessages(prev => [...prev, { role: 'assistant', content: cleanText }]);
 
+          // Auto-save user message to database
+          if (sessionIdRef.current && userName) {
+            try {
+              const userRes = await fetch('/api/chat/messages', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  session_id: sessionIdRef.current,
+                  guest_id: userName,
+                  role: 'user',
+                  content: userMsg.content
+                }),
+              });
+              if (!userRes.ok) {
+                console.error('Failed to save user message:', await userRes.text());
+              }
+            } catch (saveError) {
+              console.error('Error saving user message:', saveError);
+            }
+          }
+
+          // Auto-save assistant message to database
+          if (sessionIdRef.current && userName) {
+            try {
+              const assistantRes = await fetch('/api/chat/messages', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  session_id: sessionIdRef.current,
+                  guest_id: userName,
+                  role: 'assistant',
+                  content: cleanText
+                }),
+              });
+              if (!assistantRes.ok) {
+                console.error('Failed to save assistant message:', await assistantRes.text());
+              }
+            } catch (saveError) {
+              console.error('Error saving assistant message:', saveError);
+            }
+          }
+
           if (showMap) {
              setMessages(prev => [...prev, { 
                  role: 'assistant', 
@@ -150,6 +248,20 @@ export default function CatmiChat({ guestName, guestStatus, guestTags, guestInfo
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Hàm xóa lịch sử chat
+  const clearHistory = () => {
+    if (!confirm('Bạn có chắc muốn xóa toàn bộ lịch sử chat với Catmi?')) return;
+    
+    setMessages([
+      { role: 'assistant', content: `Chào ${guestName || 'đằng ấy'}! Catmi nè 🔥. Cần hỏi gì về buổi tiệc hơm?` }
+    ]);
+    localStorage.removeItem('catmi_chat_history');
+    // Reset session để tạo session mới
+    sessionIdRef.current = null;
+    setUserName(null);
+    alert('✅ Lịch sử đã được xóa!');
   };
 
   return (
@@ -181,7 +293,16 @@ export default function CatmiChat({ guestName, guestStatus, guestTags, guestInfo
                     <p className="text-[10px] text-orange-100 opacity-90">Tinh linh lửa trại</p>
                 </div>
             </div>
-            <button onClick={() => setIsOpen(false)} className="hover:bg-white/20 p-1 rounded-full"><X size={20} /></button>
+            <div className="flex gap-1">
+              <button 
+                onClick={clearHistory} 
+                title="Xóa lịch sử"
+                className="hover:bg-white/20 p-1 rounded-full"
+              >
+                <Trash2 size={18} />
+              </button>
+              <button onClick={() => setIsOpen(false)} className="hover:bg-white/20 p-1 rounded-full"><X size={20} /></button>
+            </div>
           </div>
 
           {/* Body Chat */}
@@ -194,27 +315,11 @@ export default function CatmiChat({ guestName, guestStatus, guestTags, guestInfo
                      </div>
                  )}
                  
-                 {msg.type === 'image' ? (
-                     // --- PHẦN HIỂN THỊ ẢNH (Bấm để xem) ---
-                     <div 
-                        onClick={() => setPreviewImage(msg.content)} // Sự kiện mở Lightbox
-                        className="relative w-48 h-32 rounded-lg overflow-hidden border border-orange-300 shadow-sm cursor-pointer group hover:shadow-md transition-all"
-                     >
-                        <Image src={msg.content} alt="Map" fill className="object-cover transition-transform group-hover:scale-105" unoptimized />
-                        
-                        {/* Overlay icon Zoom */}
-                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
-                            <ZoomIn className="text-white opacity-0 group-hover:opacity-100 transition-opacity" size={24} />
-                        </div>
-                        <div className="absolute bottom-0 w-full bg-black/60 text-white text-[10px] p-1 text-center font-bold">Bấm để phóng to</div>
-                     </div>
-                 ) : (
-                     <div className={`max-w-[80%] rounded-2xl p-3 text-sm shadow-sm ${
-                         msg.role === 'user' ? 'bg-blue-600 text-white rounded-br-none' : 'bg-white border border-gray-100 text-gray-800 rounded-bl-none'
-                     }`}>
-                        {msg.role === 'user' ? msg.content : renderMessageContent(msg.content)}
-                     </div>
-                 )}
+                 <div className={`max-w-[80%] rounded-2xl p-3 text-sm shadow-sm ${
+                     msg.role === 'user' ? 'bg-blue-600 text-white rounded-br-none' : 'bg-white border border-gray-100 text-gray-800 rounded-bl-none'
+                 }`}>
+                    {msg.role === 'user' ? msg.content : renderMessageContent(msg.content)}
+                 </div>
               </div>
             ))}
             {isLoading && (
