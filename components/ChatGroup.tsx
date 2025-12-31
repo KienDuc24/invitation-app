@@ -314,7 +314,7 @@ export default function ChatGroup({ currentUser, groupTag, onBack, onLeaveGroup 
                 </div>
                 <div className={`max-w-[75%] space-y-1 ${isMe ? "items-end flex flex-col" : "items-start flex flex-col"}`}>
                     {!isMe && <span className="text-[10px] text-gray-500 ml-1">{msg.sender_name}</span>}
-                    <div className={`p-3 rounded-2xl text-sm shadow-sm ${isMe ? "bg-[#d4af37] text-black rounded-tr-none" : "bg-[#222] text-gray-200 rounded-tl-none border border-[#333]"}`}>
+                    <div className={`p-3 rounded-2xl text-sm shadow-sm min-w-0 ${isMe ? "bg-[#d4af37] text-black rounded-tr-none" : "bg-[#222] text-gray-200 rounded-tl-none border border-[#333]"}`}>
                        {imageUrls.length > 0 && (
                            <div className={`mb-2 grid gap-2 ${imageUrls.length === 1 ? 'grid-cols-1' : imageUrls.length <= 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
                                {imageUrls.map((url: string, idx: number) => (
@@ -324,7 +324,7 @@ export default function ChatGroup({ currentUser, groupTag, onBack, onLeaveGroup 
                                ))}
                            </div>
                        )}
-                       {msg.content && <p className="whitespace-pre-wrap leading-relaxed break-words">{msg.content}</p>}
+                       {msg.content && <p className="whitespace-pre-wrap leading-relaxed break-all overflow-hidden">{msg.content}</p>}
                     </div>
                     <span className="text-[9px] text-gray-600 px-1 select-none">{new Date(msg.created_at).toLocaleTimeString('vi-VN', {hour: '2-digit', minute:'2-digit'})}</span>
                 </div>

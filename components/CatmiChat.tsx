@@ -315,7 +315,7 @@ export default function CatmiChat({ guestName, guestStatus, guestTags, guestInfo
                      </div>
                  )}
                  
-                 <div className={`max-w-[80%] rounded-2xl p-3 text-sm shadow-sm ${
+                 <div className={`max-w-[80%] rounded-2xl p-3 text-sm shadow-sm break-words whitespace-pre-wrap overflow-hidden ${
                      msg.role === 'user' ? 'bg-blue-600 text-white rounded-br-none' : 'bg-white border border-gray-100 text-gray-800 rounded-bl-none'
                  }`}>
                     {msg.role === 'user' ? msg.content : renderMessageContent(msg.content)}

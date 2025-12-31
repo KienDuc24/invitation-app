@@ -10,29 +10,49 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Missing confessionId" }, { status: 400 });
     }
 
+    console.log('📝 [GET /comments] Fetching comments for confession:', confessionId);
+
     const { data: comments, error } = await supabase
       .from("confession_comments")
       .select("*")
       .eq("confession_id", confessionId)
       .order("created_at", { ascending: false });
 
-    if (error) throw error;
+    if (error) {
+      console.error('❌ [GET /comments] Error fetching comments:', error);
+      throw error;
+    }
+
+    console.log('✅ [GET /comments] Found comments:', comments?.length || 0);
 
     // Fetch guest info cho mỗi comment
     const commentsWithGuests = await Promise.all(
-      (comments || []).map(async (comment) => {
-        const { data: guest } = await supabase
+      (comments || []).map(async (comment, idx) => {
+        console.log(`🔍 [GET /comments] Fetching guest for comment ${idx}, guest_id:`, comment.guest_id);
+        
+        const { data: guest, error: guestError } = await supabase
           .from("guests")
           .select("id, name, avatar_url")
-          .eq("id", comment.guest_id)
-          .single();
-        return { ...comment, guests: guest };
+          .eq("id", comment.guest_id);
+
+        if (guestError) {
+          console.warn(`⚠️ [GET /comments] Error fetching guest ${idx}:`, guestError);
+          // Return comment with null guest if error
+          return { ...comment, guests: null };
+        }
+
+        // Use first item if array, or null if empty
+        const guestData = guest && guest.length > 0 ? guest[0] : null;
+        console.log(`✅ [GET /comments] Got guest for comment ${idx}:`, guestData);
+        
+        return { ...comment, guests: guestData };
       })
     );
 
+    console.log('📦 [GET /comments] Returning:', commentsWithGuests.length, 'comments with guest data');
     return NextResponse.json({ comments: commentsWithGuests || [] });
   } catch (error) {
-    console.error("Get comments error:", error);
+    console.error("❌ Get comments error:", error);
     return NextResponse.json({ error: "Failed to fetch comments" }, { status: 500 });
   }
 }
@@ -40,7 +60,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const { confessionId, guestId, content } = await req.json();
-    console.log('POST params:', { confessionId, guestId, content });
+    console.log('📝 [POST /comments] Posting comment:', { confessionId, guestId, contentLength: content?.length });
 
     if (!confessionId || !guestId || !content?.trim()) {
       return NextResponse.json({ error: "Missing parameters" }, { status: 400 });
@@ -56,24 +76,32 @@ export async function POST(req: NextRequest) {
       .select()
       .single();
 
-    console.log('Insert result:', { comment, error });
-
     if (error) {
-      console.error("Supabase error:", error);
+      console.error("❌ [POST /comments] Supabase insert error:", error);
       return NextResponse.json({ error: error.message, code: error.code }, { status: 500 });
     }
 
+    console.log('✅ [POST /comments] Comment inserted:', comment?.id);
+
     // Fetch guest info
-    const { data: guest } = await supabase
+    const { data: guests, error: guestError } = await supabase
       .from("guests")
       .select("id, name, avatar_url")
-      .eq("id", guestId)
-      .single();
+      .eq("id", guestId);
+
+    if (guestError) {
+      console.warn('⚠️ [POST /comments] Error fetching guest:', guestError);
+      const commentWithGuest = { ...comment, guests: null };
+      return NextResponse.json({ comment: commentWithGuest });
+    }
+
+    const guest = guests && guests.length > 0 ? guests[0] : null;
+    console.log('✅ [POST /comments] Got guest:', guest);
 
     const commentWithGuest = { ...comment, guests: guest };
     return NextResponse.json({ comment: commentWithGuest });
   } catch (error: any) {
-    console.error("Post comment catch error:", error);
+    console.error("❌ [POST /comments] Catch error:", error);
     return NextResponse.json({ error: error?.message || "Failed to post comment", details: JSON.stringify(error) }, { status: 500 });
   }
 }

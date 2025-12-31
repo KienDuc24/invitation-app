@@ -4,20 +4,20 @@ import MobileInvitation from "@/components/3d/InvitationCard";
 import ChatGroup from "@/components/ChatGroup";
 import FilmStoryTemplate from "@/components/FilmStoryTemplate";
 import NetworkSection, { ChatGroupInfo } from "@/components/NetworkSection";
+import ProjectorStory from "@/components/ProjectorStory";
 import StoryTemplate from "@/components/StoryTemplate";
 import { supabase } from "@/lib/supabase";
-import html2canvas from "html2canvas";
 import {
-    ArrowLeft,
-    BellRing,
-    Camera,
-    Check,
-    Crown,
-    Download,
-    Edit3,
-    Heart,
-    HeartHandshake, ImagePlus,
-    Loader2, MessageCircle, Send, Share2, Ticket, Trash2, UserPlus, Users, X
+  ArrowLeft,
+  BellRing,
+  Camera,
+  Check,
+  Crown,
+  Download,
+  Edit3,
+  Heart,
+  HeartHandshake, ImagePlus,
+  Loader2, MessageCircle, Send, Share2, Ticket, Trash2, UserPlus, Users, X
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
@@ -97,6 +97,8 @@ export default function GuestDashboard({ guest }: DashboardProps) {
   const [showStoryPreview, setShowStoryPreview] = useState(false);
   const [storyPreviewImage, setStoryPreviewImage] = useState<string>("");
   const [generatingStory, setGeneratingStory] = useState(false);
+  const [showProjector, setShowProjector] = useState(false);
+  const [projectorFrames, setProjectorFrames] = useState<any[]>([]);
   const [selectedConfessionForStory, setSelectedConfessionForStory] = useState<any>(null);
   const storyTemplateRef = useRef<HTMLDivElement>(null);
   const [storyViewMode, setStoryViewMode] = useState<'classic' | 'film'>('film'); // Story type selector
@@ -430,64 +432,128 @@ export default function GuestDashboard({ guest }: DashboardProps) {
 
   const fetchComments = async (confessionId: string) => {
     try {
-      console.log('💬 [fetchComments] Fetching comments for:', confessionId);
+      console.log('💬 [fetchComments] Starting fetch for confession:', confessionId);
+      console.log('💬 [fetchComments] URL:', `/api/confessions/comments?confessionId=${confessionId}`);
       
       const response = await fetch(`/api/confessions/comments?confessionId=${confessionId}`);
-      const { comments } = await response.json();
-      console.log('✅ [fetchComments] Fetched user comments:', comments?.length || 0);
+      console.log('💬 [fetchComments] Response status:', response.status, response.statusText);
+      console.log('💬 [fetchComments] Response headers:', response.headers);
+      
+      if (!response.ok) {
+        console.error('❌ [fetchComments] Response NOT OK - status:', response.status);
+        const errorData = await response.text();
+        console.error('❌ [fetchComments] Error response body:', errorData);
+        return;
+      }
+      
+      const data = await response.json();
+      console.log('✅ [fetchComments] Response data:', data);
+      
+      const comments = data.comments || [];
+      console.log('✅ [fetchComments] Parsed comments:', comments?.length || 0, 'items');
+      console.log('✅ [fetchComments] Comments details:', comments);
       
       // Store comments
       setCommentsByConfession(prev => { 
-        console.log('📝 [fetchComments] Updated commentsByConfession for:', confessionId, 'with', comments?.length || 0, 'comments');
-        return { ...prev, [confessionId]: comments || [] };
+        const updated = { ...prev, [confessionId]: comments || [] };
+        console.log('📝 [fetchComments] State updated. New comments for', confessionId, ':', comments?.length || 0);
+        console.log('📝 [fetchComments] Full state:', updated);
+        return updated;
       });
       
       // Update comment count - include admin comment if exists
       const confession = selectedConfession;
       const adminCommentCount = confession?.admin_comment ? 1 : 0;
       const totalComments = (comments?.length || 0) + adminCommentCount;
+      console.log('📊 [fetchComments] Admin comment exists:', !!confession?.admin_comment);
       console.log('📊 [fetchComments] Total comments (user + admin):', totalComments);
       
     } catch (error) {
-      console.error('❌ [fetchComments] Error:', error);
+      console.error('❌ [fetchComments] CATCH ERROR:', error);
+      console.error('❌ [fetchComments] Error message:', error instanceof Error ? error.message : String(error));
+      console.error('❌ [fetchComments] Full error:', error);
     }
   };
 
-  // --- HÀM TẠO STORY CHIA SẺ ---
+  // --- HÀM TẠO STORY CHIA SẺ (PROJECTOR) ---
   const handleGenerateStory = async (confession: any) => {
     try {
       setGeneratingStory(true);
-      setSelectedConfessionForStory(confession);
+
+      // Parse ảnh từ confession - có thể là JSON string hoặc array
+      let images: string[] = [];
       
-      // Delay để đảm bảo component đã render
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Thử parse image_url trước (có thể là JSON string)
+      if (confession.image_url) {
+        try {
+          if (typeof confession.image_url === 'string') {
+            const parsed = JSON.parse(confession.image_url);
+            if (Array.isArray(parsed)) {
+              images = parsed.filter((url: string) => url && typeof url === 'string');
+            } else {
+              images = [confession.image_url];
+            }
+          } else if (Array.isArray(confession.image_url)) {
+            images = confession.image_url.filter((url: string) => url && typeof url === 'string');
+          }
+        } catch {
+          // Không phải JSON, dùng string trực tiếp
+          if (typeof confession.image_url === 'string') {
+            images = [confession.image_url];
+          }
+        }
+      }
       
-      if (!storyTemplateRef.current) {
-        throw new Error('Template ref not found');
+      // Fallback: thử image_urls
+      if (images.length === 0 && confession.image_urls && Array.isArray(confession.image_urls)) {
+        images = confession.image_urls.filter((url: string) => url && typeof url === 'string');
       }
 
-      // Capture template to canvas with CORS enabled
-      const canvas = await html2canvas(storyTemplateRef.current, {
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: '#0a0a0a',
-        scale: 2,
-        logging: false,
-        imageTimeout: 0,
-        ignoreElements: (el: Element) => {
-          // Ignore style tags to prevent CSS parsing errors
-          return el.tagName === 'STYLE' || el.tagName === 'SCRIPT';
-        },
+      if (images.length === 0) {
+        alert('Bài đăng này không có ảnh');
+        setGeneratingStory(false);
+        return;
+      }
+
+      // Lấy comments của bài đăng
+      const comments = commentsByConfession[confession.id] || [];
+      const commentCount = comments.length + (confession.admin_comment ? 1 : 0);
+
+      // Convert comments format cho ProjectorStory
+      const formattedComments = comments.map((cmt: any) => {
+        // Kiểm tra nhiều cách để lấy tên
+        let userName = 'Guest';
+        if (cmt.guests && typeof cmt.guests === 'object') {
+          if (Array.isArray(cmt.guests)) {
+            userName = cmt.guests[0]?.name || 'Guest';
+          } else {
+            userName = cmt.guests.name || 'Guest';
+          }
+        } else if (cmt.guest_name) {
+          userName = cmt.guest_name;
+        }
+        return {
+          user: userName,
+          text: cmt.content || ''
+        };
       });
 
-      // Convert canvas to PNG data URL
-      const imageData = canvas.toDataURL('image/png');
-      setStoryPreviewImage(imageData);
-      setShowStoryPreview(true);
-      
-      console.log('✅ Story generated successfully');
+      // Tạo frames từ images
+      const frames = images.map((imageUrl: string, idx: number) => ({
+        id: `${confession.id}-${idx}`,
+        image_url: imageUrl,
+        comments: idx === 0 ? formattedComments : [], // Chỉ frame đầu có comments
+        likes: likersByConfession[confession.id]?.length || 0,
+        commentCount: idx === 0 ? commentCount : 0
+      }));
+
+      setProjectorFrames(frames);
+      setSelectedConfessionForStory(confession);
+      setShowProjector(true);
+
+      console.log('✅ Projector story ready with', frames.length, 'frames');
     } catch (error) {
-      console.error('❌ Error generating story:', error);
+      console.error('❌ Error creating projector story:', error);
       alert('Lỗi tạo Story. Vui lòng thử lại!');
     } finally {
       setGeneratingStory(false);
@@ -658,42 +724,64 @@ export default function GuestDashboard({ guest }: DashboardProps) {
   };
 
   const handlePostComment = async (confessionId: string) => {
-    if (!commentInput.trim()) return;
+    if (!commentInput.trim()) {
+      console.log('⚠️ [handlePostComment] Empty comment input, returning');
+      return;
+    }
     
-    console.log('📝 [handlePostComment] Starting post for confession:', confessionId);
-    console.log('💬 [handlePostComment] Comment content:', commentInput.trim().substring(0, 50) + '...');
+    console.log('📝 [handlePostComment] === START POSTING COMMENT ===');
+    console.log('📝 [handlePostComment] Confession ID:', confessionId);
+    console.log('📝 [handlePostComment] Guest ID:', guest.id);
+    console.log('📝 [handlePostComment] Comment content:', commentInput.trim().substring(0, 100) + '...');
     
     setIsPostingComment(true);
     try {
+      const payload = { 
+        confessionId, 
+        guestId: guest.id, 
+        content: commentInput 
+      };
+      console.log('📝 [handlePostComment] Sending POST request with payload:', payload);
+      
       const response = await fetch('/api/confessions/comments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ confessionId, guestId: guest.id, content: commentInput })
+        body: JSON.stringify(payload)
       });
+      
+      console.log('📝 [handlePostComment] Response received - Status:', response.status, response.statusText);
+      
       const data = await response.json();
-      console.log('📊 [handlePostComment] Posted response:', {status: response.status, commentId: data.comment?.id});
+      console.log('📝 [handlePostComment] Response JSON:', data);
       
       if (!response.ok) {
+        console.error('❌ [handlePostComment] Response NOT OK');
         console.error('❌ [handlePostComment] Error details:', data);
         alert(`Lỗi: ${data.details || data.error}`);
         setIsPostingComment(false);
         return;
       }
       
-      console.log('✅ [handlePostComment] Comment posted successfully:', data.comment?.id);
+      console.log('✅ [handlePostComment] Comment posted successfully');
+      console.log('✅ [handlePostComment] New comment:', data.comment);
       
       // Delay 500ms để đảm bảo comment đã lưu vào DB trước khi fetch
-      console.log('⏳ [handlePostComment] Waiting 500ms before fetching comments...');
+      console.log('⏳ [handlePostComment] Waiting 500ms before fetching fresh comments...');
       setTimeout(() => {
-        console.log('🔄 [handlePostComment] Fetching fresh comments after post');
+        console.log('🔄 [handlePostComment] NOW fetching fresh comments after post');
         fetchComments(confessionId);
       }, 500);
       setCommentInput("");
+      console.log('📝 [handlePostComment] Comment input cleared');
+      
     } catch (error) {
-      console.error('❌ [handlePostComment] Error:', error);
+      console.error('❌ [handlePostComment] CATCH ERROR:', error);
+      console.error('❌ [handlePostComment] Error type:', error instanceof Error ? error.constructor.name : typeof error);
+      console.error('❌ [handlePostComment] Full error:', error);
       alert('Lỗi khi đăng bình luận');
     } finally {
       setIsPostingComment(false);
+      console.log('📝 [handlePostComment] === END POSTING COMMENT ===');
     }
   };
 
@@ -752,10 +840,32 @@ export default function GuestDashboard({ guest }: DashboardProps) {
 
   // --- FETCH COMMENTS WHEN MODAL OPENS ---
   useEffect(() => {
-    if (selectedConfession && (selectedConfession.visibility === 'everyone' || selectedConfession.guest_id === guest.id)) {
-      fetchFreshConfession(selectedConfession.id);
-      fetchComments(selectedConfession.id);
-      setCommentInput("");
+    console.log('🔍 [useEffect] selectedConfession changed:', selectedConfession?.id);
+    if (selectedConfession) {
+      console.log('🔍 [useEffect] selectedConfession details:', {
+        id: selectedConfession.id,
+        visibility: selectedConfession.visibility,
+        guestId: selectedConfession.guest_id,
+        currentGuestId: guest.id
+      });
+      
+      const canView = selectedConfession.visibility === 'everyone' || selectedConfession.guest_id === guest.id;
+      console.log('🔍 [useEffect] Can view comments?', canView);
+      
+      if (canView) {
+        console.log('🔍 [useEffect] Calling fetchFreshConfession');
+        fetchFreshConfession(selectedConfession.id);
+        
+        console.log('🔍 [useEffect] Calling fetchComments');
+        fetchComments(selectedConfession.id);
+        
+        setCommentInput("");
+        console.log('🔍 [useEffect] Comment input cleared');
+      } else {
+        console.log('⚠️ [useEffect] Cannot view - not public and not author');
+      }
+    } else {
+      console.log('🔍 [useEffect] selectedConfession is null/undefined');
     }
   }, [selectedConfession?.id]);
 
@@ -1825,7 +1935,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                         </div>
 
                         {/* Guest Interactions Footer */}
-                        <div className="flex items-center gap-2 pt-3 border-t border-[#222] text-[11px] text-gray-500">
+                        <div className="flex items-center gap-2 pt-3 border-t border-[#222] text-[11px] text-gray-500 flex-wrap">
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -1843,6 +1953,18 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                             />
                             <span className="text-[10px]">{getLikeCount(item.id)}</span>
                           </button>
+                          
+                          {/* Admin Like Badge */}
+                          {item.likes_count > 0 && (
+                            <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-yellow-500/10 text-yellow-400">
+                              <Heart 
+                                size={10} 
+                                className="fill-yellow-400"
+                              />
+                              <span className="text-[9px]">Admin</span>
+                            </div>
+                          )}
+                          
                           <div className="flex items-center gap-1 px-2 py-1 text-gray-500">
                             <MessageCircle size={12} />
                             <span className="text-[10px]">{getCommentCount(item.id)}</span>
@@ -2106,7 +2228,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                     {(selectedConfession.visibility === 'everyone' || selectedConfession.guest_id === guest.id) && (
                       <div className="space-y-4">
                         {/* Like Button */}
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 flex-wrap">
                           <button 
                             onClick={() => handleLikeConfession(selectedConfession.id)}
                             className={`flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm transition-all ${
@@ -2119,8 +2241,13 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                               size={16} 
                               className={guestLikes.has(selectedConfession.id) ? 'fill-red-400' : ''}
                             />
-                            {getLikeCount(selectedConfession.id)}
+                            <span>
+                              {getLikeCount(selectedConfession.id)}
+                            </span>
                           </button>
+                          
+
+                          
                           {/* View Likers Button - Only for post author or admin */}
                           {(selectedConfession.guest_id === guest.id || guest.id === 'admin') && getLikeCount(selectedConfession.id) > 0 && (
                             <button 
@@ -2163,6 +2290,15 @@ export default function GuestDashboard({ guest }: DashboardProps) {
 
                           {/* Comments List */}
                           <div className="space-y-2">
+                            {(() => {
+                              const confId = selectedConfession?.id || '';
+                              const comments = commentsByConfession[confId] || [];
+                              console.log('📋 [Comments Section] Rendering comments for confession:', confId);
+                              console.log('📋 [Comments Section] Comments in state:', comments);
+                              console.log('📋 [Comments Section] Admin comment:', selectedConfession?.admin_comment || 'none');
+                              console.log('📋 [Comments Section] Admin info:', adminInfo);
+                              return null;
+                            })()}
                             {selectedConfession.admin_comment && adminInfo && (
                               <div className="bg-[#0a0a0a] rounded-lg p-3 border border-[#333]">
                                 <div className="flex items-center gap-2 mb-2">
@@ -2173,13 +2309,21 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                                   />
                                   <span className="text-gray-300 text-xs font-bold">{adminInfo.name}</span>
                                 </div>
-                                <p className="text-gray-200 text-sm leading-relaxed">{selectedConfession.admin_comment}</p>
+                                <p className="text-gray-200 text-sm leading-relaxed break-words overflow-hidden whitespace-pre-wrap">{selectedConfession.admin_comment}</p>
                               </div>
                             )}
                             {commentsByConfession[selectedConfession?.id || ''] && commentsByConfession[selectedConfession?.id || ''].length > 0 ? commentsByConfession[selectedConfession?.id || ''].map((comment, idx) => {
+                              console.log(`🔍 [Comment Render] Comment ${idx}:`, comment);
+                              
                               const guestData = comment.guests && typeof comment.guests === 'object' ? (Array.isArray(comment.guests) ? comment.guests[0] : comment.guests) : null;
+                              console.log(`🔍 [Comment Render] Guest data for comment ${idx}:`, guestData);
+                              
                               // Chỉ render khi đã có guest data đầy đủ
-                              if (!guestData) return null;
+                              if (!guestData) {
+                                console.warn(`⚠️ [Comment Render] No guest data for comment ${idx}, skipping render`);
+                                return null;
+                              }
+                              
                               return (
                               <div key={`${comment.id}-${idx}`} className="bg-[#0a0a0a] rounded-lg p-3 border border-[#333]">
                                 <div className="flex items-center gap-2 mb-2">
@@ -2188,12 +2332,12 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                                     alt={guestData.name}
                                     className="w-6 h-6 rounded-full object-cover border border-gray-600"
                                   />
-                                  <span className="text-gray-300 text-xs font-bold">{guestData.name}</span>
+                                  <span className="text-gray-300 text-xs font-bold">{guestData.name || 'Unknown'}</span>
                                   <span className="text-gray-500 text-xs">
                                     {new Date(comment.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
                                   </span>
                                 </div>
-                                <p className="text-gray-200 text-sm leading-relaxed">{comment.content}</p>
+                                <p className="text-gray-200 text-sm leading-relaxed break-words overflow-hidden whitespace-pre-wrap">{comment.content}</p>
                               </div>
                             );
                             }) : (
@@ -2283,18 +2427,31 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                   {(likersByConfession[selectedConfessionForLikers?.id] || []).map((liker: any) => (
                     <div 
                       key={liker.id}
-                      className="flex items-center gap-3 p-3 bg-[#0f0f0f] rounded-xl hover:bg-[#1a1a1a] transition-colors border border-[#222] hover:border-[#333]"
+                      className={`flex items-center gap-3 p-3 rounded-xl hover:transition-colors border ${
+                        liker.isAdmin 
+                          ? 'bg-yellow-500/5 border-yellow-500/20 hover:bg-yellow-500/10 hover:border-yellow-500/30' 
+                          : 'bg-[#0f0f0f] border-[#222] hover:bg-[#1a1a1a] hover:border-[#333]'
+                      }`}
                     >
                       <img 
                         src={getAvatarUrl(liker.avatar_url || '', liker.name || 'Guest')}
                         alt={liker.name}
-                        className="w-8 h-8 rounded-full object-cover border border-[#333]"
+                        className={`w-8 h-8 rounded-full object-cover ${
+                          liker.isAdmin ? 'border-yellow-400' : 'border-[#333]'
+                        }`}
                       />
                       <div className="flex-1">
-                        <p className="text-gray-200 text-sm font-bold">
+                        <p className={`text-sm font-bold ${
+                          liker.isAdmin ? 'text-yellow-400' : 'text-gray-200'
+                        }`}>
                           {liker.name}
                         </p>
                       </div>
+                      {liker.isAdmin && (
+                        <span className="text-xs px-2 py-1 rounded-full bg-yellow-500/20 text-yellow-400 font-bold">
+                          Admin
+                        </span>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -2663,6 +2820,16 @@ export default function GuestDashboard({ guest }: DashboardProps) {
             </div>
           )}
         </div>
+      )}
+
+      {/* PROJECTOR STORY */}
+      {showProjector && (
+        <ProjectorStory
+          frames={projectorFrames}
+          eventName={selectedConfessionForStory?.content?.split('\n')[0] || "Kỷ Niệm"}
+          authorName={selectedConfessionForStory?.guests?.name || selectedConfessionForStory?.guest?.name || guest.name}
+          onClose={() => setShowProjector(false)}
+        />
       )}
 
       {/* BOTTOM NAV - Ẩn khi ở tab 'card' */}
