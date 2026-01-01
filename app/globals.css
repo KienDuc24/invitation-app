@@ -56,3 +56,49 @@ body {
   scrollbar-color: #d4af37 #0a0a0a;
   scrollbar-width: thin;
 }
+
+/* --- FILM PROJECTOR EFFECTS --- */
+
+/* Hiệu ứng rung nhẹ của máy chiếu cũ */
+@keyframes projectorJitter {
+  0% { transform: translate(0, 0); }
+  25% { transform: translate(0.4px, 0.4px); }
+  50% { transform: translate(0, 0.4px); }
+  75% { transform: translate(-0.4px, 0); }
+  100% { transform: translate(0, 0); }
+}
+
+/* Hiệu ứng cuộn phim */
+@keyframes filmScroll {
+  0% { transform: translateY(0); }
+  100% { transform: translateY(-100%); }
+}
+
+/* Hiệu ứng nhấp nháy ánh sáng (Flicker) */
+@keyframes lightFlicker {
+  0%, 100% { opacity: 0.98; }
+  50% { opacity: 0.95; }
+  25%, 75% { opacity: 1; }
+}
+
+/* Hiệu ứng đếm ngược xoay vòng */
+@keyframes radarSpin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.projector-jitter {
+  animation: projectorJitter 0.25s infinite;
+}
+
+.light-flicker {
+  animation: lightFlicker 0.2s infinite;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+    display: none;
+}
+.scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}

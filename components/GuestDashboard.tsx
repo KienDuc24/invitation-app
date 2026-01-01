@@ -2823,10 +2823,19 @@ export default function GuestDashboard({ guest }: DashboardProps) {
       )}
 
       {/* PROJECTOR STORY */}
-      {showProjector && (
+      {showProjector && selectedConfessionForStory && (
         <ProjectorStory
-          frames={projectorFrames}
-          eventName={selectedConfessionForStory?.content?.split('\n')[0] || "Kỷ Niệm"}
+          postImage={
+            typeof selectedConfessionForStory?.image_url === 'string'
+              ? selectedConfessionForStory.image_url.startsWith('[')
+                ? JSON.parse(selectedConfessionForStory.image_url)
+                : [selectedConfessionForStory.image_url]
+              : Array.isArray(selectedConfessionForStory?.image_url)
+              ? selectedConfessionForStory.image_url
+              : undefined
+          }
+          content={selectedConfessionForStory?.content}
+          comments={selectedConfessionForStory?.comments || []}
           authorName={
             selectedConfessionForStory?.guests?.name || 
             selectedConfessionForStory?.guest?.name || 
