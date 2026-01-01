@@ -2827,7 +2827,13 @@ export default function GuestDashboard({ guest }: DashboardProps) {
         <ProjectorStory
           frames={projectorFrames}
           eventName={selectedConfessionForStory?.content?.split('\n')[0] || "Kỷ Niệm"}
-          authorName={selectedConfessionForStory?.guests?.name || selectedConfessionForStory?.guest?.name || guest.name}
+          authorName={
+            selectedConfessionForStory?.guests?.name || 
+            selectedConfessionForStory?.guest?.name || 
+            selectedConfessionForStory?.guest_name ||
+            guest?.name || 
+            "Guest"
+          }
           onClose={() => setShowProjector(false)}
         />
       )}
