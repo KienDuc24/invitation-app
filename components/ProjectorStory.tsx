@@ -105,9 +105,9 @@ export default function ProjectorStory({
     if (stage === 'playing') {
       // Calculate duration: Cấp thời gian cho mỗi section (ảnh + comments + credits)
       // Mỗi ảnh = 1 section (h-screen), tổng sections = images.length + 2 (comments + credits)
-      // Mỗi section = 2 giây
+      // Mỗi section = 3.5 giây (2s hiển thị + 1.5s delay để load ảnh tiếp theo)
       const totalSections = images.length + 2;
-      const duration = totalSections * 2 * 1000;
+      const duration = totalSections * 3.0 * 1000;
       console.log('Playing stage - Images:', images.length, 'Total sections:', totalSections, 'Duration:', duration);
       const timer = setTimeout(() => setStage('end'), duration);
       return () => clearTimeout(timer);
@@ -136,7 +136,7 @@ export default function ProjectorStory({
   };
 
   return (
-    <div className="fixed inset-0 z-[100] bg-black text-white font-sans overflow-hidden flex flex-col items-center justify-center">
+    <div className="fixed inset-0 z-[9999] bg-black text-white font-sans overflow-hidden flex flex-col items-center justify-center">
       
       {/* BACKGROUND MUSIC */}
       <audio ref={audioRef} src="/music/bg-music.mp3" loop />
@@ -180,21 +180,22 @@ export default function ProjectorStory({
 
       {/* --- GIAI ĐOẠN 3: PHIM ĐANG CHẠY (PLAYING) --- */}
       {stage === 'playing' && (
-        <div className="relative w-full h-full flex items-center justify-center light-flicker projector-jitter overflow-hidden">
+        <div className="fixed inset-0 z-[9998] flex items-center justify-center light-flicker projector-jitter overflow-hidden">
           
           {/* Dải phim cuộl từ dưới lên */}
           {(() => {
             // Calculate animation duration based on number of sections
             // scrollDuration phải = duration để animation kết thúc cùng lúc clip kết thúc
             const totalSections = images.length + 2;
-            const scrollDuration = totalSections * 2; // 2s per section
+            const scrollDuration = totalSections * 3.5; // 3.5s per section (2s view + 1.5s delay)
+            const translatePercentage = totalSections * 100; // Tính percentage để lướt hết tất cả sections
             
             return (
               <>
                 <style>{`
                   @keyframes filmScrollDynamic {
                     0% { transform: translateY(0); }
-                    100% { transform: translateY(-100%); }
+                    100% { transform: translateY(-${translatePercentage}%); }
                   }
                   .film-scroll-container {
                     animation: filmScrollDynamic ${scrollDuration}s linear forwards;
@@ -219,10 +220,8 @@ export default function ProjectorStory({
 
                       {/* MAIN IMAGE FRAME - FILL CONTAINER */}
                       <div 
-                        className="relative z-10 bg-white shadow-lg flex-1 flex items-center justify-center"
+                        className="relative z-30 bg-white shadow-lg flex-1 flex items-center justify-center w-full h-screen"
                         style={{
-                          width: '100%',
-                          maxWidth: isLandscape(img) ? '600px' : '380px',
                           aspectRatio: 'auto'
                         }}
                       >
@@ -231,7 +230,7 @@ export default function ProjectorStory({
                                  src={img} 
                                  className="w-full h-full block bg-black"
                                  style={{
-                                   objectFit: isLandscape(img) ? 'cover' : 'contain'
+                                   objectFit: 'contain'
                                  }}
                                  alt="Memory"
                                  crossOrigin="anonymous"
@@ -252,10 +251,28 @@ export default function ProjectorStory({
                       )}
                       
                       {/* TEXT BELOW IMAGE - SMALL */}
-                      <div className="text-center w-full px-2">
+                      <div className="text-center w-full px-2 mb-4">
                           <p className="text-white/80 font-serif italic text-[8px] line-clamp-1">"{content || "..."}"</p>
                           <p className="text-white/60 text-[6px] uppercase tracking-widest mt-0.5 font-bold">- {authorName} -</p>
                       </div>
+                      
+                      {/* LIVE COMMENTS DURING IMAGE DISPLAY */}
+                      {comments.length > 0 && (
+                        <div className="relative z-40 w-full px-4 max-h-[140px] overflow-y-auto scrollbar-hide">
+                          <div className="space-y-2">
+                            {comments.slice(0, 3).map((cmt, idx) => (
+                              <div key={idx} className="bg-black/60 backdrop-blur border border-[#d4af37]/30 rounded px-3 py-2">
+                                <p className="text-white/95 font-serif text-[8px] leading-tight line-clamp-2">
+                                  "{cmt.content || cmt.text || cmt}"
+                                </p>
+                                <p className="text-[#d4af37] text-[7px] font-bold mt-1">
+                                  — {cmt.guests?.name || cmt.user || "Ẩn danh"}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                   

@@ -2384,7 +2384,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                       }} 
                       className="w-full py-3 bg-gradient-to-r from-[#d4af37] to-[#b89628] text-black font-bold rounded-xl flex items-center justify-center gap-2 uppercase text-xs tracking-widest hover:shadow-lg hover:shadow-[#d4af37]/30 transition-all active:scale-95"
                     >
-                      <Camera size={16} /> Tạo Story & Chia sẻ
+                      <Camera size={16} /> Tạo Video Kỷ niệm
                     </button>
                   )}
                   {selectedConfession.visibility !== 'everyone' && (
