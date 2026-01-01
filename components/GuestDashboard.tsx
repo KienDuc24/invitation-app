@@ -518,6 +518,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
       // Lấy comments của bài đăng
       const comments = commentsByConfession[confession.id] || [];
       const commentCount = comments.length + (confession.admin_comment ? 1 : 0);
+      console.log('🔍 Confession ID:', confession.id, 'Comments:', comments, 'Count:', commentCount);
 
       // Convert comments format cho ProjectorStory
       const formattedComments = comments.map((cmt: any) => {
@@ -537,6 +538,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
           text: cmt.content || ''
         };
       });
+      console.log('📝 Formatted comments:', formattedComments);
 
       // Tạo frames từ images
       const frames = images.map((imageUrl: string, idx: number) => ({

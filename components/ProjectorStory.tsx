@@ -210,12 +210,12 @@ export default function ProjectorStory({
                     <div key={idx} className="relative w-full h-screen flex flex-col items-center justify-center py-0">
                       
                       {/* Viền phim đục lỗ - LEFT */}
-                      <div className="absolute left-0 top-0 bottom-0 w-4 bg-black z-20 flex flex-col gap-2 py-2 items-center border-r border-white/20">
+                      <div className="absolute left-0 top-0 bottom-0 w-4 bg-black z-40 flex flex-col gap-2 py-2 items-center border-r border-white/20">
                           {Array.from({length: 48}).map((_,i) => <div key={i} className="w-1.5 h-1.5 bg-white/30 rounded-sm" />)}
                       </div>
                       
                       {/* Viền phim đục lỗ - RIGHT */}
-                      <div className="absolute right-0 top-0 bottom-0 w-4 bg-black z-20 flex flex-col gap-2 py-2 items-center border-l border-white/20">
+                      <div className="absolute right-0 top-0 bottom-0 w-4 bg-black z-40 flex flex-col gap-2 py-2 items-center border-l border-white/20">
                           {Array.from({length: 48}).map((_,i) => <div key={i} className="w-1.5 h-1.5 bg-white/30 rounded-sm" />)}
                       </div>
 
