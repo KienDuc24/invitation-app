@@ -542,9 +542,9 @@ export default function GuestDashboard({ guest }: DashboardProps) {
       const frames = images.map((imageUrl: string, idx: number) => ({
         id: `${confession.id}-${idx}`,
         image_url: imageUrl,
-        comments: idx === 0 ? formattedComments : [], // Chỉ frame đầu có comments
+        comments: formattedComments, // Pass all formatted comments để ProjectorStory hiển thị
         likes: likersByConfession[confession.id]?.length || 0,
-        commentCount: idx === 0 ? commentCount : 0
+        commentCount: commentCount
       }));
 
       setProjectorFrames(frames);

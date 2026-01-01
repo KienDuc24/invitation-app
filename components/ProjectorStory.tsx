@@ -49,6 +49,7 @@ export default function ProjectorStory({
   })();
   
   console.log('ProjectorStory - Total images:', images.length, 'Images:', images);
+  console.log('ProjectorStory - Comments:', comments, 'Total comments:', comments?.length);
 
   // Load image dimensions
   useEffect(() => {
@@ -309,7 +310,32 @@ export default function ProjectorStory({
         </div>
       )}
 
-      {/* --- GIAI ĐOẠN 4: KẾT THÚC (END SCREEN) --- */}
+      {/* CONTROL BUTTONS - ALWAYS VISIBLE DURING PLAYING */}
+      {stage === 'playing' && (
+        <div className="fixed top-4 right-4 z-[9999] flex gap-3">
+          {/* Mute Button */}
+          <button
+            onClick={toggleAudio}
+            className="bg-black/60 hover:bg-black/80 border border-[#d4af37]/50 rounded-full p-2 transition-all backdrop-blur"
+            title={isMuted ? "Bật âm thanh" : "Tắt âm thanh"}
+          >
+            {isMuted ? (
+              <VolumeX className="w-5 h-5 text-[#d4af37]" />
+            ) : (
+              <Volume2 className="w-5 h-5 text-[#d4af37]" />
+            )}
+          </button>
+          
+          {/* Close Button */}
+          <button
+            onClick={onClose}
+            className="bg-black/60 hover:bg-black/80 border border-[#d4af37]/50 rounded-full p-2 transition-all backdrop-blur"
+            title="Đóng"
+          >
+            <X className="w-5 h-5 text-[#d4af37]" />
+          </button>
+        </div>
+      )}
       {stage === 'end' && (
         <div className="relative z-50 text-center animate-in zoom-in duration-500">
             <h2 className="text-3xl font-bold text-white mb-2 uppercase tracking-widest">Hết phim</h2>
@@ -341,10 +367,10 @@ export default function ProjectorStory({
 
       {/* UI CONTROLS (Luôn hiện ở góc) */}
       <div className="absolute top-6 right-6 z-[60] flex gap-4">
-        <button onClick={toggleAudio} className="p-3 bg-black/50 backdrop-blur-md rounded-full border border-white/10 hover:bg-white/10 transition-colors">
+        <button onClick={toggleAudio} className="z-30 p-3 bg-black/50 backdrop-blur-md rounded-full border border-white/10 hover:bg-white/10 transition-colors">
             {isMuted ? <VolumeX size={20} className="text-gray-400"/> : <Volume2 size={20} className="text-[#d4af37] animate-pulse"/>}
         </button>
-        <button onClick={onClose} className="p-3 bg-black/50 backdrop-blur-md rounded-full border border-white/10 hover:bg-white/10 transition-colors">
+        <button onClick={onClose} className="z-30 p-3 bg-black/50 backdrop-blur-md rounded-full border border-white/10 hover:bg-white/10 transition-colors">
             <X size={20} className="text-white"/>
         </button>
       </div>
