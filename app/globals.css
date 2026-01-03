@@ -98,6 +98,52 @@ body {
 .scrollbar-hide::-webkit-scrollbar {
     display: none;
 }
+
+/* --- LIKE BUTTON ANIMATIONS --- */
+
+/* Spin animation cho loading icon */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Pulse animation khi like */
+@keyframes likePulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+}
+
+/* Scale down animation */
+@keyframes likeSuccess {
+  0% {
+    transform: scale(0.8);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.1);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+.like-pulse {
+  animation: likePulse 0.6s ease-in-out;
+}
+
+.like-success {
+  animation: likeSuccess 0.4s ease-out;
+}
 .scrollbar-hide {
     -ms-overflow-style: none;
     scrollbar-width: none;

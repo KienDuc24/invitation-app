@@ -72,6 +72,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState("");
   const [editFiles, setEditFiles] = useState<File[]>([]);
+  const [deletedImageUrls, setDeletedImageUrls] = useState<string[]>([]);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isUpdating, setIsUpdating] = useState(false);
   const editFileInputRef = useRef<HTMLInputElement>(null);
@@ -88,6 +89,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
   const [showLikersModal, setShowLikersModal] = useState(false);
   const [likersList, setLikersList] = useState<any[]>([]);
   const [selectedConfessionForLikers, setSelectedConfessionForLikers] = useState<any>(null);
+  const [loadingLikes, setLoadingLikes] = useState<Set<string>>(new Set()); // Track which confessions are loading
   const [showImagePreviewModal, setShowImagePreviewModal] = useState(false);
   const [previewImageUrl, setPreviewImageUrl] = useState<string>("");
   const [previewImages, setPreviewImages] = useState<string[]>([]);
@@ -114,20 +116,16 @@ export default function GuestDashboard({ guest }: DashboardProps) {
   useEffect(() => {
     const fetchAdminInfo = async () => {
       try {
-        console.log('🔄 [fetchAdminInfo] Fetching admin info...');
         const { data } = await supabase
           .from('guests')
           .select('id, name, avatar_url')
           .eq('id', 'admin')
           .single();
         if (data) {
-          console.log('✅ [fetchAdminInfo] Admin info loaded:', data);
           setAdminInfo(data);
-        } else {
-          console.warn('⚠️ [fetchAdminInfo] No admin info found');
         }
       } catch (e) {
-        console.error('❌ [fetchAdminInfo] Error:', e);
+        console.error('[fetchAdminInfo] Error:', e);
       }
     };
     fetchAdminInfo();
@@ -141,34 +139,73 @@ export default function GuestDashboard({ guest }: DashboardProps) {
     try {
       let imageUrl = selectedConfession.image_url;
       
+      // Xóa ảnh cũ từ storage nếu bị xóa
+      if (deletedImageUrls.length > 0) {
+        await Promise.all(deletedImageUrls.map(async (url) => {
+          try {
+            // Extract filename from URL
+            const path = new URL(url).pathname;
+            const fileName = path.split('/').slice(-3).join('/'); // Get "confessions/id/filename"
+            await supabase.storage.from('invitation-media').remove([fileName]);
+          } catch (err) {
+            console.warn('Could not delete image:', url, err);
+          }
+        }));
+      }
+      
       // Upload ảnh mới nếu chọn
       if (editFiles.length > 0) {
         const uploadedUrls: string[] = await Promise.all(editFiles.map(async (file) => {
           const timestamp = Date.now();
           const randomId = Math.random().toString(36).substr(2, 9);
-          const fileName = `confession-${selectedConfession.id}-${timestamp}-${randomId}`;
+          const fileName = `confessions/${selectedConfession.id}/${timestamp}-${randomId}`;
+          
+          console.log('[Upload] Starting upload:', fileName);
           
           const { data: uploadData, error: uploadError } = await supabase.storage
-            .from('confessions')
+            .from('invitation-media')
             .upload(fileName, file, { upsert: true });
           
           if (uploadError) {
+            console.error('[Upload] Error:', uploadError);
             throw new Error(`Upload failed: ${uploadError.message}`);
           }
           
+          console.log('[Upload] Success:', uploadData);
+          
           const { data: publicUrlData } = supabase.storage
-            .from('confessions')
+            .from('invitation-media')
             .getPublicUrl(fileName);
+          
+          console.log('[Upload] Public URL:', publicUrlData?.publicUrl);
+          
           return publicUrlData.publicUrl;
         }));
         
-        // Combine new and existing images
-        const existingUrls = parseImageUrls(selectedConfession.image_url);
+        console.log('[Upload] All uploaded URLs:', uploadedUrls);
+        
+        // Combine remaining old images and new images
+        const existingUrls = parseImageUrls(selectedConfession.image_url).filter(
+          url => !deletedImageUrls.includes(url)
+        );
+        console.log('[Upload] Existing URLs:', existingUrls);
+        
         const allUrls = [...existingUrls, ...uploadedUrls];
+        console.log('[Upload] All URLs combined:', allUrls);
+        
         imageUrl = JSON.stringify(allUrls);
+        console.log('[Upload] Final imageUrl:', imageUrl);
+      } else if (deletedImageUrls.length > 0) {
+        // Only delete, no new uploads
+        const remainingUrls = parseImageUrls(selectedConfession.image_url).filter(
+          url => !deletedImageUrls.includes(url)
+        );
+        imageUrl = remainingUrls.length > 0 ? JSON.stringify(remainingUrls) : null;
       }
       
       // Update confession via API route
+      console.log('[Save] Updating with imageUrl:', imageUrl);
+      
       const response = await fetch('/api/confessions/update', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -186,6 +223,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
       }
 
       const result = await response.json();
+      console.log('[Save] API response:', result);
       
       // Cập nhật local state
       const updatedConfession = {
@@ -194,6 +232,8 @@ export default function GuestDashboard({ guest }: DashboardProps) {
         image_url: imageUrl,
         visibility: confessionVisibility
       };
+      
+      console.log('[Save] Updated confession:', updatedConfession);
       
       setSelectedConfession(updatedConfession);
       setMyConfessions(myConfessions.map(c => 
@@ -204,9 +244,11 @@ export default function GuestDashboard({ guest }: DashboardProps) {
       
       setIsEditing(false);
       setEditFiles([]);
+      setDeletedImageUrls([]);
+      setCurrentImageIndex(0);  // Reset về ảnh đầu tiên
       alert('Đã lưu thay đổi thành công!');
     } catch (error: any) {
-      console.error('Edit error:', error?.message || error);
+      console.error('[handleEditConfession] Error:', error?.message || error);
       alert(`Lỗi: ${error?.message || 'Không rõ nguyên nhân'}`);
     } finally {
       setIsUpdating(false);
@@ -234,7 +276,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
       setSelectedConfession(null);
       alert('Đã xóa lưu bút');
     } catch (error: any) {
-      console.error('Delete error:', error?.message || error);
+      console.error('[handleDeleteConfession] Error:', error?.message || error);
       alert(`Lỗi: ${error?.message || 'Không rõ nguyên nhân'}`);
     }
   };
@@ -242,50 +284,35 @@ export default function GuestDashboard({ guest }: DashboardProps) {
 
   // --- LẤY DANH SÁCH LƯU BÚT CỦA TÔI ---
   const fetchMyConfessions = async () => {
-    console.log('🔄 [fetchMyConfessions] Starting fetch for guest:', guest.id);
     const { data } = await supabase
       .from('confessions')
       .select('*')
       .eq('guest_id', guest.id)
       .order('created_at', { ascending: false });
     
-    console.log('✅ [fetchMyConfessions] Confessions fetched:', data?.length || 0, data);
-    
     if (data) {
       setMyConfessions(data);
       
-      // Get all confession IDs for batch queries
       const confessionIds = data.map(c => c.id);
-      console.log('📋 [fetchMyConfessions] Confession IDs:', confessionIds);
       
-      // Fetch ALL likes and comments in 2 batch queries
       const { data: allLikes } = await supabase
         .from('confession_likes')
         .select('*, guests(id, name, avatar_url)')
         .in('confession_id', confessionIds);
-      
-      console.log('❤️ [fetchMyConfessions] All likes fetched:', allLikes?.length || 0, allLikes);
       
       const { data: allComments } = await supabase
         .from('confession_comments')
         .select('*')
         .in('confession_id', confessionIds);
       
-      console.log('💬 [fetchMyConfessions] All comments fetched:', allComments?.length || 0, allComments);
-      
-      // Calculate on client side
       const likersByIdMap: Record<string, any[]> = {};
       const commentCounts: Record<string, any[]> = {};
       
       data.forEach(confession => {
-        // Build likers array (only count, no full data yet)
         const userLikers = allLikes
           ?.filter(l => l.confession_id === confession.id)
           .map((l: any) => l.guests) || [];
         
-        console.log(`👥 [fetchMyConfessions] Confession ${confession.id}: ${userLikers.length} user likes, admin_like=${confession.likes_count}`);
-        
-        // Add admin if liked
         if (confession.likes_count > 0 && adminInfo) {
           likersByIdMap[confession.id] = [
             {
@@ -296,17 +323,11 @@ export default function GuestDashboard({ guest }: DashboardProps) {
             },
             ...userLikers
           ];
-          console.log(`✨ [fetchMyConfessions] Added admin to confession ${confession.id}, total likers: ${likersByIdMap[confession.id].length}`);
         } else {
           likersByIdMap[confession.id] = userLikers;
-          if (confession.likes_count > 0 && !adminInfo) {
-            console.warn(`⚠️ [fetchMyConfessions] Admin like flag set but adminInfo not loaded for ${confession.id}`);
-          }
         }
         
-        // Get comments for this confession
         const confComments = allComments?.filter(c => c.confession_id === confession.id) || [];
-        console.log(`💬 [fetchMyConfessions] Confession ${confession.id}: ${confComments.length} user comments, admin_comment=${!!confession.admin_comment}`);
         
         if (confession.admin_comment) {
           commentCounts[confession.id] = [
@@ -318,12 +339,8 @@ export default function GuestDashboard({ guest }: DashboardProps) {
         }
       });
       
-      console.log('📊 [fetchMyConfessions] Final likersByIdMap:', likersByIdMap);
-      console.log('📊 [fetchMyConfessions] Final commentCounts:', commentCounts);
-      
       setLikersByConfession(likersByIdMap);
       setCommentsByConfession(commentCounts);
-      console.log('✅ [fetchMyConfessions] State updated successfully');
     }
   };
 
@@ -622,7 +639,11 @@ export default function GuestDashboard({ guest }: DashboardProps) {
   };
 
   const handleLikeConfession = async (confessionId: string) => {
+    // Prevent double-click
+    if (loadingLikes.has(confessionId)) return;
+    
     try {
+      setLoadingLikes(prev => new Set([...prev, confessionId]));
       console.log('❤️ [handleLikeConfession] Starting like action for:', confessionId);
       
       const response = await fetch('/api/confessions/like', {
@@ -677,6 +698,12 @@ export default function GuestDashboard({ guest }: DashboardProps) {
       console.log('📝 [handleLikeConfession] Updated guestLikes set, total:', newLikes.size);
     } catch (error) {
       console.error('❌ [handleLikeConfession] Error:', error);
+    } finally {
+      setLoadingLikes(prev => {
+        const next = new Set(prev);
+        next.delete(confessionId);
+        return next;
+      });
     }
   };
 
@@ -1704,11 +1731,11 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                     <div className="py-4 text-center animate-in zoom-in">
                         <div className="w-12 h-12 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-2 text-green-500"><Send size={20}/></div>
                         <p className="text-green-500 font-bold mb-2">Gửi thành công!</p>
-                        <button onClick={() => setSent(false)} className="text-xs text-[#d4af37] underline font-bold uppercase">Gửi thêm kỷ niệm</button>
+                        <button onClick={() => setSent(false)} className="text-xs text-[#d4af37] underline font-bold uppercase">Gửi thêm</button>
                     </div>
                 ) : (
                     <div className="space-y-4">
-                        <textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder="Hãy nhắn gửi điều gì đó cho Kiên nhé..." className="w-full bg-[#0a0a0a] border border-[#333] rounded-xl p-3 text-sm min-h-[120px] text-gray-200 focus:border-[#d4af37] outline-none resize-none"/>
+                        <textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder="Lưu lại những kỷ niệm hoặc cùng chia sẻ với mọi người..." className="w-full bg-[#0a0a0a] border border-[#333] rounded-xl p-3 text-sm min-h-[120px] text-gray-200 focus:border-[#d4af37] outline-none resize-none"/>
                         <div className="flex gap-2">
                             <button onClick={() => fileInputRef.current?.click()} className="p-3 bg-[#222] rounded-xl text-gray-400 hover:text-white"><ImagePlus size={20}/></button>
                             <input type="file" ref={fileInputRef} hidden accept="image/*" multiple onChange={(e) => setFiles([...files, ...Array.from(e.target.files || [])])}/>
@@ -2050,7 +2077,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                 ) : null}
               </div>
               <div className="flex items-center gap-2">
-                {!isEditing && !selectedConfession.guest && (
+                {!isEditing && selectedConfession?.guest_id === guest.id && (
                   <>
                     <button 
                       onClick={() => {
@@ -2058,6 +2085,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                         setEditContent(selectedConfession.content);
                         setConfessionVisibility(selectedConfession.visibility || 'admin');
                         setEditFiles([]);
+                        setDeletedImageUrls([]);
                       }}
                       className="p-2 hover:bg-[#222] rounded-full transition-colors text-blue-400"
                       title="Chỉnh sửa"
@@ -2077,6 +2105,8 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                   setSelectedConfession(null);
                   setIsEditing(false);
                   setEditFiles([]);
+                  setDeletedImageUrls([]);
+                  setCurrentImageIndex(0);
                 }} className="p-2 hover:bg-[#222] rounded-full transition-colors">
                   <X size={20} className="text-gray-400"/>
                 </button>
@@ -2105,7 +2135,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                                 />
                                 <button 
                                   onClick={() => setEditFiles(editFiles.filter((_, i) => i !== idx))}
-                                  className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity z-10"
                                 >
                                   <X size={12} />
                                 </button>
@@ -2119,12 +2149,35 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                           <p className="text-gray-500 text-[10px] mb-2">Ảnh hiện tại:</p>
                           <div className="flex flex-wrap gap-2">
                             {parseImageUrls(selectedConfession.image_url).map((url, idx) => (
-                              <img 
-                                key={idx}
-                                src={url}
-                                alt={`Current ${idx}`}
-                                className="w-16 h-16 rounded-lg object-cover border border-[#333]"
-                              />
+                              <div key={idx} className="relative group">
+                                <img 
+                                  src={url}
+                                  alt={`Current ${idx}`}
+                                  className={`w-16 h-16 rounded-lg object-cover border ${
+                                    deletedImageUrls.includes(url) 
+                                      ? 'border-red-500 opacity-50' 
+                                      : 'border-[#333]'
+                                  }`}
+                                />
+                                {!deletedImageUrls.includes(url) && (
+                                  <button 
+                                    onClick={() => setDeletedImageUrls([...deletedImageUrls, url])}
+                                    className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                                    title="Xóa ảnh này"
+                                  >
+                                    <X size={12} />
+                                  </button>
+                                )}
+                                {deletedImageUrls.includes(url) && (
+                                  <button 
+                                    onClick={() => setDeletedImageUrls(deletedImageUrls.filter(u => u !== url))}
+                                    className="absolute -top-2 -right-2 bg-green-500 text-white rounded-full p-1 text-[10px] font-bold z-10"
+                                    title="Khôi phục ảnh"
+                                  >
+                                    ✓
+                                  </button>
+                                )}
+                              </div>
                             ))}
                           </div>
                         </div>
@@ -2135,7 +2188,21 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                       >
                         <ImagePlus size={16} /> Thêm ảnh
                       </button>
-                      <input type="file" ref={editFileInputRef} hidden accept="image/*" multiple onChange={(e) => setEditFiles([...editFiles, ...Array.from(e.target.files || [])])}/>
+                      <input 
+                        type="file" 
+                        ref={editFileInputRef} 
+                        hidden 
+                        accept="image/*" 
+                        multiple 
+                        onChange={(e) => {
+                          const newFiles = Array.from(e.target.files || []);
+                          setEditFiles(prev => [...prev, ...newFiles]);
+                          // Reset input để có thể chọn file trùng lần 2
+                          if (editFileInputRef.current) {
+                            editFileInputRef.current.value = '';
+                          }
+                        }}
+                      />
                     </div>
                   </div>
 
@@ -2233,16 +2300,21 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                         <div className="flex items-center gap-3 flex-wrap">
                           <button 
                             onClick={() => handleLikeConfession(selectedConfession.id)}
-                            className={`flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm transition-all ${
+                            disabled={loadingLikes.has(selectedConfession.id)}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
                               guestLikes.has(selectedConfession.id)
                                 ? 'bg-red-500/20 text-red-400'
                                 : 'bg-[#222] text-gray-300 hover:bg-[#333]'
                             }`}
                           >
-                            <Heart 
-                              size={16} 
-                              className={guestLikes.has(selectedConfession.id) ? 'fill-red-400' : ''}
-                            />
+                            {loadingLikes.has(selectedConfession.id) ? (
+                              <Loader2 size={16} className="animate-spin" />
+                            ) : (
+                              <Heart 
+                                size={16} 
+                                className={guestLikes.has(selectedConfession.id) ? 'fill-red-400' : ''}
+                              />
+                            )}
                             <span>
                               {getLikeCount(selectedConfession.id)}
                             </span>
@@ -2371,6 +2443,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                       setEditFiles([]);
                       setEditContent(selectedConfession.content);
                       setConfessionVisibility(selectedConfession.visibility || 'admin');
+                      setDeletedImageUrls([]);
                     }}
                     className="w-full py-2 bg-[#222] text-gray-300 font-bold rounded-xl uppercase text-xs hover:bg-[#333] transition-colors"
                   >
@@ -2408,7 +2481,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
           onClick={() => setShowLikersModal(false)}
         >
           <div 
-            className="bg-[#111] border border-[#333] rounded-2xl max-w-sm w-full max-h-[60vh] flex flex-col shadow-2xl"
+            className="bg-[#111] rounded-2xl max-w-sm w-full max-h-[60vh] flex flex-col shadow-2xl overflow-hidden border border-[#333]"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}

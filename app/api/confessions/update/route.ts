@@ -8,7 +8,7 @@ const supabase = createClient(
 
 export async function PUT(request: NextRequest) {
   try {
-    const { confessionId, content, visibility } = await request.json();
+    const { confessionId, content, visibility, imageUrl } = await request.json();
 
     if (!confessionId || !content) {
       return NextResponse.json(
@@ -23,6 +23,11 @@ export async function PUT(request: NextRequest) {
 
     if (visibility) {
       updateData.visibility = visibility;
+    }
+
+    // Add imageUrl if provided
+    if (imageUrl !== undefined) {
+      updateData.image_url = imageUrl;
     }
 
     const { data, error } = await supabase
