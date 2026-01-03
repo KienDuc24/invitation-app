@@ -74,6 +74,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
   const [editFiles, setEditFiles] = useState<File[]>([]);
   const [deletedImageUrls, setDeletedImageUrls] = useState<string[]>([]);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [cardImageIndices, setCardImageIndices] = useState<Record<string, number>>({}); // Track image index for each card
   const [isUpdating, setIsUpdating] = useState(false);
   const editFileInputRef = useRef<HTMLInputElement>(null);
   const [confessionVisibility, setConfessionVisibility] = useState<'admin' | 'everyone'>('admin');
@@ -1827,7 +1828,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                       onClick={() => setWishTab('all')}
                       className={`text-xs px-3 py-1 rounded-full font-bold uppercase transition-all ${wishTab === 'all' ? 'bg-[#d4af37] text-black' : 'bg-[#222] text-gray-300 hover:bg-[#333]'}`}
                     >
-                      Từ mọi người ({publicConfessions.length})
+                      Công khai ({publicConfessions.length})
                     </button>
                   </div>
                 </div>
@@ -1840,12 +1841,104 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                     <p className="text-gray-500 text-xs italic">Bạn chưa viết lưu bút nào</p>
                   </div>
                 ) : (
-                  myConfessions.map((item) => (
+                  myConfessions.map((item) => {
+                    const images = parseImageUrls(item.image_url);
+                    const currentIdx = cardImageIndices[item.id] || 0;
+                    const currentImage = images.length > 0 ? images[currentIdx] : null;
+                    
+                    let touchStartX = 0;
+                    const handleTouchStart = (e: React.TouchEvent) => {
+                      touchStartX = e.touches[0].clientX;
+                    };
+                    const handleTouchEnd = (e: React.TouchEvent) => {
+                      const touchEndX = e.changedTouches[0].clientX;
+                      const diff = touchStartX - touchEndX;
+                      
+                      if (Math.abs(diff) > 50) { // Minimum 50px swipe
+                        if (diff > 0) {
+                          // Swiped left - next image
+                          setCardImageIndices(prev => ({
+                            ...prev,
+                            [item.id]: currentIdx < images.length - 1 ? currentIdx + 1 : 0
+                          }));
+                        } else {
+                          // Swiped right - previous image
+                          setCardImageIndices(prev => ({
+                            ...prev,
+                            [item.id]: currentIdx > 0 ? currentIdx - 1 : images.length - 1
+                          }));
+                        }
+                      }
+                    };
+                    
+                    return (
                     <div key={item.id} className="bg-[#111] border border-[#333] rounded-2xl overflow-hidden shadow-lg animate-in slide-in-from-bottom-2 cursor-pointer hover:border-[#d4af37] transition-all" onClick={() => {
                       setSelectedConfession(item);
                       setCurrentImageIndex(0);
                     }}>
-                      {parseImageUrls(item.image_url).length > 0 && <img src={parseImageUrls(item.image_url)[0]} className="w-full h-48 object-cover border-b border-[#222]" alt="Kỷ niệm" />}
+                      {/* Image Carousel */}
+                      {currentImage && (
+                        <div className="relative bg-black w-full h-80 group overflow-hidden" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+                          <img 
+                            src={currentImage} 
+                            className="w-full h-80 object-cover border-b border-[#222] transition-opacity duration-300 ease-in-out" 
+                            alt="Kỷ niệm"
+                            key={currentImage}
+                          />
+                          
+                          {/* Image Counter & Stack Icon */}
+                          {images.length > 1 && (
+                            <>
+                              {/* Stack Icon - Top Right */}
+                              <div className="absolute top-3 right-3 flex items-center gap-1 bg-black/70 px-2 py-1 rounded text-xs text-white font-bold">
+                                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                                  <rect x="3" y="3" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"/>
+                                  <rect x="7" y="7" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"/>
+                                </svg>
+                                {images.length}
+                              </div>
+
+                              {/* Navigation Arrows */}
+                              {/* Previous */}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setCardImageIndices(prev => ({
+                                    ...prev,
+                                    [item.id]: currentIdx > 0 ? currentIdx - 1 : images.length - 1
+                                  }));
+                                }}
+                                className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/30 hover:bg-white/50 text-white p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                              >
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                                </svg>
+                              </button>
+
+                              {/* Next */}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setCardImageIndices(prev => ({
+                                    ...prev,
+                                    [item.id]: currentIdx < images.length - 1 ? currentIdx + 1 : 0
+                                  }));
+                                }}
+                                className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/30 hover:bg-white/50 text-white p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                              >
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                </svg>
+                              </button>
+
+                              {/* Image Counter - Bottom Right */}
+                              <div className="absolute bottom-3 right-3 bg-black/70 px-2 py-1 rounded text-xs text-white font-bold">
+                                {currentIdx + 1}/{images.length}
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      )}
                       <div className="p-4 space-y-4">
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex-1">
@@ -1900,21 +1993,22 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                             >
                               <Trash2 size={14}/>
                             </button>
+                            {parseImageUrls(item.image_url).length > 0 && (
+                              <button onClick={(e) => { e.stopPropagation(); handleGenerateStory(item); }} className="p-1.5 hover:bg-[#222] rounded-lg transition-colors text-[#d4af37]" title="Tạo Story">
+                                <Camera size={14} /> 
+                              </button>
+                            )}
                             {item.visibility === 'everyone' && (
-                              <>
-                                <button onClick={(e) => { e.stopPropagation(); handleGenerateStory(item); }} className="p-1.5 hover:bg-[#222] rounded-lg transition-colors text-[#d4af37]" title="Tạo Story">
-                                  <Camera size={14} /> 
-                                </button>
-                                <button onClick={(e) => { e.stopPropagation(); handleShare(item); }} className="p-1.5 hover:bg-[#222] rounded-lg transition-colors text-green-400" title="Chia sẻ">
-                                  <Share2 size={14} /> 
-                                </button>
-                              </>
+                              <button onClick={(e) => { e.stopPropagation(); handleShare(item); }} className="p-1.5 hover:bg-[#222] rounded-lg transition-colors text-green-400" title="Chia sẻ">
+                                <Share2 size={14} /> 
+                              </button>
                             )}
                           </div>
                         </div>
                       </div>
                     </div>
-                  ))
+                    );
+                  })
                 )}
                   </>
                 ) : (
@@ -1925,12 +2019,104 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                     <p className="text-gray-500 text-xs italic">Chưa có kỷ niệm công khai nào</p>
                   </div>
                 ) : (
-                  publicConfessions.map((item) => (
+                  publicConfessions.map((item) => {
+                    const images = parseImageUrls(item.image_url);
+                    const currentIdx = cardImageIndices[item.id] || 0;
+                    const currentImage = images.length > 0 ? images[currentIdx] : null;
+                    
+                    let touchStartX = 0;
+                    const handleTouchStart = (e: React.TouchEvent) => {
+                      touchStartX = e.touches[0].clientX;
+                    };
+                    const handleTouchEnd = (e: React.TouchEvent) => {
+                      const touchEndX = e.changedTouches[0].clientX;
+                      const diff = touchStartX - touchEndX;
+                      
+                      if (Math.abs(diff) > 50) { // Minimum 50px swipe
+                        if (diff > 0) {
+                          // Swiped left - next image
+                          setCardImageIndices(prev => ({
+                            ...prev,
+                            [item.id]: currentIdx < images.length - 1 ? currentIdx + 1 : 0
+                          }));
+                        } else {
+                          // Swiped right - previous image
+                          setCardImageIndices(prev => ({
+                            ...prev,
+                            [item.id]: currentIdx > 0 ? currentIdx - 1 : images.length - 1
+                          }));
+                        }
+                      }
+                    };
+                    
+                    return (
                     <div key={item.id} className="bg-[#111] border border-[#333] rounded-2xl overflow-hidden shadow-lg animate-in slide-in-from-bottom-2 cursor-pointer hover:border-[#d4af37] transition-all" onClick={() => {
                       setSelectedConfession(item);
                       setCurrentImageIndex(0);
                     }}>
-                      {parseImageUrls(item.image_url).length > 0 && <img src={parseImageUrls(item.image_url)[0]} className="w-full max-h-64 object-cover border-b border-[#222]" alt="Kỷ niệm" />}
+                      {/* Image Carousel */}
+                      {currentImage && (
+                        <div className="relative bg-black w-full h-80 group overflow-hidden" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+                          <img 
+                            src={currentImage} 
+                            className="w-full h-80 object-cover border-b border-[#222] transition-opacity duration-300 ease-in-out" 
+                            alt="Kỷ niệm"
+                            key={currentImage}
+                          />
+                          
+                          {/* Image Counter & Stack Icon */}
+                          {images.length > 1 && (
+                            <>
+                              {/* Stack Icon - Top Right */}
+                              <div className="absolute top-3 right-3 flex items-center gap-1 bg-black/70 px-2 py-1 rounded text-xs text-white font-bold">
+                                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                                  <rect x="3" y="3" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"/>
+                                  <rect x="7" y="7" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"/>
+                                </svg>
+                                {images.length}
+                              </div>
+
+                              {/* Navigation Arrows */}
+                              {/* Previous */}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setCardImageIndices(prev => ({
+                                    ...prev,
+                                    [item.id]: currentIdx > 0 ? currentIdx - 1 : images.length - 1
+                                  }));
+                                }}
+                                className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/30 hover:bg-white/50 text-white p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                              >
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                                </svg>
+                              </button>
+
+                              {/* Next */}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setCardImageIndices(prev => ({
+                                    ...prev,
+                                    [item.id]: currentIdx < images.length - 1 ? currentIdx + 1 : 0
+                                  }));
+                                }}
+                                className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/30 hover:bg-white/50 text-white p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                              >
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                </svg>
+                              </button>
+
+                              {/* Image Counter - Bottom Right */}
+                              <div className="absolute bottom-3 right-3 bg-black/70 px-2 py-1 rounded text-xs text-white font-bold">
+                                {currentIdx + 1}/{images.length}
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      )}
                       <div className="p-4 space-y-4">
                         {/* Poster info */}
                         {item.guest && (
@@ -1954,7 +2140,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                             <p className="text-gray-200 text-sm leading-relaxed font-medium">{item.content}</p>
                           </div>
                           <div className="flex gap-1">
-                            <button onClick={(e) => { e.stopPropagation(); handleGenerateStory(item); }} className="p-1.5 hover:bg-[#222] rounded-lg transition-colors text-[#d4af37]" title="Tạo Story">
+                            <button onClick={(e) => { e.stopPropagation(); handleGenerateStory(item); }} className="p-1.5 hover:bg-[#222] rounded-lg transition-colors text-[#d4af37] disabled:opacity-50 disabled:cursor-not-allowed" title="Tạo Story" disabled={parseImageUrls(item.image_url).length === 0}>
                               <Camera size={14} /> 
                             </button>
                             <button onClick={(e) => { e.stopPropagation(); handleShare(item); }} className="p-1.5 hover:bg-[#222] rounded-lg transition-colors text-green-400" title="Chia sẻ">
@@ -2002,7 +2188,8 @@ export default function GuestDashboard({ guest }: DashboardProps) {
 
                       </div>
                     </div>
-                  ))
+                    );
+                  })
                 )}
                   </>
                 )}
@@ -2241,14 +2428,31 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                 <>
                   {/* Ảnh */}
                   {parseImageUrls(selectedConfession.image_url).length > 0 && (
-                    <div className="relative bg-black">
+                    <div className="relative bg-black" onTouchStart={(e) => {
+                      (e.currentTarget as any).touchStartX = e.touches[0].clientX;
+                    }} onTouchEnd={(e) => {
+                      const images = parseImageUrls(selectedConfession.image_url);
+                      const touchStartX = (e.currentTarget as any).touchStartX || 0;
+                      const touchEndX = e.changedTouches[0].clientX;
+                      const diff = touchStartX - touchEndX;
+                      
+                      if (Math.abs(diff) > 50 && images.length > 1) {
+                        if (diff > 0) {
+                          // Swiped left - next image
+                          setCurrentImageIndex(prev => prev < images.length - 1 ? prev + 1 : 0);
+                        } else {
+                          // Swiped right - previous image
+                          setCurrentImageIndex(prev => prev > 0 ? prev - 1 : images.length - 1);
+                        }
+                      }
+                    }}>
                       {(() => {
                         const images = parseImageUrls(selectedConfession.image_url);
                         return (
                           <>
                             <img 
                               src={images[currentImageIndex]} 
-                              className="w-full h-auto max-h-[50%] object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                              className="w-full h-auto object-contain cursor-pointer hover:opacity-90 transition-opacity"
                               alt={`Kỷ niệm ${currentImageIndex + 1}`}
                               onClick={() => {
                                 setPreviewImages(images);
@@ -2262,16 +2466,18 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                               </div>
                             )}
                             {images.length > 1 && (
-                              <div className="absolute bottom-4 left-4 flex gap-2">
+                              <div className="absolute top-1/2 -translate-y-1/2 w-full flex items-center justify-between px-2 pointer-events-none">
                                 <button 
                                   onClick={() => setCurrentImageIndex(prev => prev > 0 ? prev - 1 : images.length - 1)}
-                                  className="bg-white/20 hover:bg-white/30 text-white px-2 py-1 rounded text-xs font-bold transition-colors"
+                                  className="bg-white/30 hover:bg-white/50 text-white p-3 rounded-full text-xs font-bold transition-colors pointer-events-auto"
+                                  title="Ảnh trước"
                                 >
                                   ←
                                 </button>
                                 <button 
                                   onClick={() => setCurrentImageIndex(prev => prev < images.length - 1 ? prev + 1 : 0)}
-                                  className="bg-white/20 hover:bg-white/30 text-white px-2 py-1 rounded text-xs font-bold transition-colors"
+                                  className="bg-white/30 hover:bg-white/50 text-white p-3 rounded-full text-xs font-bold transition-colors pointer-events-auto"
+                                  title="Ảnh sau"
                                 >
                                   →
                                 </button>
@@ -2452,19 +2658,9 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                 </>
               ) : (
                 <>
-                  {selectedConfession.visibility === 'everyone' && (
-                    <button 
-                      onClick={() => { 
-                        handleGenerateStory(selectedConfession); 
-                      }} 
-                      className="w-full py-3 bg-gradient-to-r from-[#d4af37] to-[#b89628] text-black font-bold rounded-xl flex items-center justify-center gap-2 uppercase text-xs tracking-widest hover:shadow-lg hover:shadow-[#d4af37]/30 transition-all active:scale-95"
-                    >
-                      <Camera size={16} /> Tạo Video Kỷ niệm
-                    </button>
-                  )}
                   {selectedConfession.visibility !== 'everyone' && (
                     <div className="w-full py-3 bg-gray-700/30 text-gray-400 text-center rounded-xl text-xs italic">
-                      🔒 Chỉ hiển thị với admin - Chuyển sang "Mọi người" để chia sẻ
+                      🔒 Chỉ hiển thị với admin - Chuyển sang "Mọi người" để cùng chia sẻ
                     </div>
                   )}
                 </>

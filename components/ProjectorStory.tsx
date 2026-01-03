@@ -364,27 +364,6 @@ export default function ProjectorStory({
             </div>
         </div>
       )}
-
-      {/* UI CONTROLS (Luôn hiện ở góc) */}
-      <div className="absolute top-6 right-6 z-[60] flex gap-4">
-        <button onClick={toggleAudio} className="z-30 p-3 bg-black/50 backdrop-blur-md rounded-full border border-white/10 hover:bg-white/10 transition-colors">
-            {isMuted ? <VolumeX size={20} className="text-gray-400"/> : <Volume2 size={20} className="text-[#d4af37] animate-pulse"/>}
-        </button>
-        <button onClick={onClose} className="z-30 p-3 bg-black/50 backdrop-blur-md rounded-full border border-white/10 hover:bg-white/10 transition-colors">
-            <X size={20} className="text-white"/>
-        </button>
-      </div>
-
-      {/* REC BUTTON HINT (Gợi ý quay màn hình) */}
-      {stage === 'playing' && (
-          <div className="absolute bottom-10 left-0 right-0 flex justify-center z-50 pointer-events-none opacity-50">
-              <div className="flex items-center gap-2 bg-red-600/20 px-4 py-1.5 rounded-full border border-red-500/50">
-                  <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-                  <span className="text-[10px] text-red-200 font-bold uppercase tracking-widest">REC</span>
-              </div>
-          </div>
-      )}
-
     </div>
   );
 }
