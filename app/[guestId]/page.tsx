@@ -1,5 +1,4 @@
 import MobileInvitation from "@/components/3d/InvitationCard";
-import CatmiChat from "@/components/CatmiChat";
 import GuestDashboard from "@/components/GuestDashboard";
 import { getGuestById } from "@/lib/supabase";
 import { Metadata } from "next";
@@ -45,15 +44,6 @@ export default async function GuestPage({ params }: GuestPageProps) {
           initialWish={guest.wish}
         />
       )}
-
-      {/* 2. Catmi Chat - Truyền thêm guest object */}
-      <CatmiChat 
-          guestName={guest.id}
-          guestStatus={isConfirmed}
-          guestTags={guest.tags}
-          guestInfor={guest.infor}
-          guest={guest}
-      />
     </>
   );
 }

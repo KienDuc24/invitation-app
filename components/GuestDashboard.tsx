@@ -1,6 +1,7 @@
 "use client";
 
 import MobileInvitation from "@/components/3d/InvitationCard";
+import CatmiChat from "@/components/CatmiChat";
 import ChatGroup from "@/components/ChatGroup";
 import FilmStoryTemplate from "@/components/FilmStoryTemplate";
 import NetworkSection, { ChatGroupInfo } from "@/components/NetworkSection";
@@ -42,6 +43,7 @@ interface DashboardProps {
 
 export default function GuestDashboard({ guest }: DashboardProps) {
   const [activeTab, setActiveTab] = useState<'wish' | 'chat' | 'card'>('chat');
+  const [selectedChatGroup, setSelectedChatGroup] = useState<string | null>(null); // Fullscreen chat group
   const [unreadCount, setUnreadCount] = useState(0);
   const [unreadGroupTags, setUnreadGroupTags] = useState<string[]>([]);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(guest.avatar_url || null);
@@ -2229,7 +2231,11 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                  </div>
              )}
              {activeChatTag && (
-                 <div className="flex flex-col h-[70vh] animate-in slide-in-from-right-10 duration-300"><div className="flex-1 overflow-hidden relative border border-[#333] rounded-2xl bg-[#111] shadow-2xl"><ChatGroup currentUser={{...guest, avatar_url: getDisplayAvatar()}} groupTag={activeChatTag} onBack={() => setActiveChatTag(null)} onLeaveGroup={() => handleLeaveGroup(activeChatTag)} /></div></div>
+                 <div className="fixed inset-0 z-[100] bg-[#050505] min-h-screen flex flex-col animate-in slide-in-from-right-10 duration-300">
+                    <div className="flex-1 flex flex-col overflow-hidden">
+                        <ChatGroup currentUser={{...guest, avatar_url: getDisplayAvatar()}} groupTag={activeChatTag} onBack={() => setActiveChatTag(null)} onLeaveGroup={() => handleLeaveGroup(activeChatTag)} />
+                    </div>
+                 </div>
              )}
            </div>
         )}
@@ -3147,6 +3153,16 @@ export default function GuestDashboard({ guest }: DashboardProps) {
           </div>
         </div>
       )}
+
+      {/* Catmi Chat - Ẩn khi đang xem nhóm chat */}
+      <CatmiChat 
+        guestName={guest.id}
+        guestStatus={true}
+        guestTags={guest.tags}
+        guestInfor={guest.infor}
+        guest={guest}
+        isHidden={!!activeChatTag}
+      />
     </>
   );
 }

@@ -38,9 +38,10 @@ interface CatmiChatProps {
     guestTags?: string[];
     guestInfor?: string;
     guest?: { id: string; name: string }; // Thêm guest object
+    isHidden?: boolean; // Ẩn Catmi khi đang xem nhóm chat
 }
 
-export default function CatmiChat({ guestName, guestStatus, guestTags, guestInfor, guest }: CatmiChatProps) {
+export default function CatmiChat({ guestName, guestStatus, guestTags, guestInfor, guest, isHidden = false }: CatmiChatProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -454,6 +455,9 @@ export default function CatmiChat({ guestName, guestStatus, guestTags, guestInfo
       setIsLoading(false);
     }
   };
+
+  // Ẩn Catmi khi đang xem nhóm chat
+  if (isHidden) return null;
 
   return (
     <>

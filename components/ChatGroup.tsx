@@ -287,7 +287,6 @@ export default function ChatGroup({ currentUser, groupTag, onBack, onLeaveGroup 
                     </div>
                     <div className="min-w-0">
                         <h3 className="font-bold text-[#d4af37] text-sm truncate">{groupName}</h3>
-
                     </div>
                 </div>
             </div>
@@ -393,6 +392,8 @@ function ChatInfoSidebar({ groupTag, currentUser, onClose, messages, onLeave }: 
     const [isAdding, setIsAdding] = useState(false);
     const [candidates, setCandidates] = useState<any[]>([]);
     const [loadingCandidates, setLoadingCandidates] = useState(false);
+    const [confirmPerson, setConfirmPerson] = useState<any>(null);
+    const [isAddingMember, setIsAddingMember] = useState(false);
 
     const mediaList = messages.filter((m: any) => m.image_url);
 
@@ -431,11 +432,36 @@ function ChatInfoSidebar({ groupTag, currentUser, onClose, messages, onLeave }: 
     };
 
     const handleAddMember = async (guestId: string) => {
+        const person = candidates.find(c => c.id === guestId);
+        if (person) {
+            setConfirmPerson(person);
+        }
+    };
+
+    const confirmAddMember = async () => {
+        if (!confirmPerson) return;
+        setIsAddingMember(true);
         try {
-            await supabase.from('group_members').insert({ group_tag: groupTag, guest_id: String(guestId) });
-            setCandidates(prev => prev.filter(c => c.id !== guestId));
-            alert("Đã thêm thành viên!");
-        } catch (error) { alert("Lỗi khi thêm thành viên."); }
+            await supabase.from('group_members').insert({ group_tag: groupTag, guest_id: String(confirmPerson.id) });
+            setCandidates(prev => prev.filter(c => c.id !== confirmPerson.id));
+            
+            // Refresh members list
+            const { data } = await supabase.from('group_members').select('guests(id, name, tags, avatar_url)').eq('group_tag', groupTag);
+            const list = data?.map((i: any) => ({ 
+                id: i.guests.id, 
+                name: i.guests.name, 
+                avatar_url: i.guests.avatar_url, 
+                isAdmin: i.guests.tags?.includes('admin') 
+            })) || [];
+            if (!list.find(m => m.isAdmin)) list.unshift({ id: "admin", name: "Đức Kiên", isAdmin: true, avatar_url: null });
+            setMembers(list);
+            
+            setConfirmPerson(null);
+        } catch (error) { 
+            alert("Lỗi khi thêm thành viên."); 
+        } finally {
+            setIsAddingMember(false);
+        }
     };
 
     const handleLeaveGroup = async () => {
@@ -513,6 +539,33 @@ function ChatInfoSidebar({ groupTag, currentUser, onClose, messages, onLeave }: 
                     </div>
                 )}
             </div>
+
+            {/* CONFIRMATION DIALOG */}
+            {confirmPerson && (
+                <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+                    <div className="bg-[#111] border border-[#333] rounded-2xl p-6 max-w-sm w-full shadow-2xl animate-in zoom-in-95 duration-300">
+                        <h3 className="text-lg font-bold text-white mb-2">Xác nhận thêm thành viên</h3>
+                        <p className="text-gray-400 text-sm mb-6">
+                            Bạn có chắc muốn thêm <span className="text-[#d4af37] font-bold">{confirmPerson.name}</span> vào nhóm này?
+                        </p>
+                        <div className="flex gap-3">
+                            <button 
+                                onClick={() => setConfirmPerson(null)}
+                                className="flex-1 py-2 rounded-lg bg-[#222] text-gray-300 hover:bg-[#333] font-bold text-sm transition-colors"
+                            >
+                                Hủy
+                            </button>
+                            <button 
+                                onClick={confirmAddMember}
+                                disabled={isAddingMember}
+                                className="flex-1 py-2 rounded-lg bg-[#d4af37] text-black hover:bg-[#b89628] font-bold text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                            >
+                                {isAddingMember ? <Loader2 size={16} className="animate-spin" /> : "Xác nhận"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
