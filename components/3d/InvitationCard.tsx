@@ -346,6 +346,55 @@ function SceneSetup() {
     )
 }
 
+// === 2D CARD VIEW COMPONENT ===
+const Card2DView = ({ guestName, eventInfo }: { guestName: string, eventInfo: any }) => (
+    <div className="absolute inset-0 z-[100] bg-gradient-to-b from-[#1a1a1a] to-[#050505] flex items-center justify-center p-4 overflow-y-auto">
+        <div className="w-full max-w-sm space-y-6 py-8">
+            {/* Main Card */}
+            <div className="animate-in fade-in slide-in-from-bottom-8 duration-700">
+                <div className="bg-gradient-to-br from-[#ffd700]/20 via-[#d4af37]/10 to-[#aa8e26]/10 border-2 border-[#d4af37]/50 rounded-2xl p-12 backdrop-blur-sm shadow-2xl">
+                    <div className="text-center space-y-6">
+                        {/* Top Label */}
+                        <div className="space-y-1">
+                            <p className="text-[#d4af37] text-xs font-bold tracking-[0.3em] uppercase">✨ Lời Mời ✨</p>
+                            <p className="text-[#999999] text-xs tracking-[0.2em] uppercase">Trân trọng kính mời</p>
+                        </div>
+                        
+                        {/* Guest Name - LARGE */}
+                        <div>
+                            <h1 className="text-5xl font-black text-transparent bg-gradient-to-r from-[#ffd700] via-[#d4af37] to-[#aa8e26] bg-clip-text uppercase tracking-[0.08em] leading-tight drop-shadow-lg">
+                                {guestName}
+                            </h1>
+                        </div>
+                        
+                        {/* Event Details */}
+                        <div className="space-y-3 pt-4 border-t border-[#d4af37]/30">
+                            <p className="text-[#999999] text-xs uppercase tracking-widest">Tới tham dự sự kiện</p>
+                            <h2 className="text-2xl font-bold text-white uppercase tracking-[0.1em]">Lễ Tốt Nghiệp</h2>
+                            <p className="text-[#d4af37] text-lg italic font-semibold">Của Bùi Đức Kiên</p>
+                            <p className="text-4xl font-black text-[#ffd700] drop-shadow-[0_0_20px_rgba(212,175,55,0.3)]">2025</p>
+                        </div>
+                        
+                        {/* Event Info */}
+                        {eventInfo && (
+                            <div className="space-y-2 pt-4 border-t border-[#d4af37]/30 text-xs text-gray-300">
+                                {eventInfo.time_info && <p>📅 <span className="text-[#d4af37]">{eventInfo.time_info}</span></p>}
+                                {eventInfo.location_info && <p>📍 <span className="text-[#d4af37]">{eventInfo.location_info}</span></p>}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+            
+            {/* Bottom Info */}
+            <div className="text-center space-y-2 animate-in fade-in duration-1000 delay-300">
+                <p className="text-gray-400 text-[11px] uppercase tracking-[0.15em] font-medium">📱 Chế độ xem 2D</p>
+                <p className="text-gray-500 text-xs">Nhấn biểu tượng ở trên để chuyển sang 3D</p>
+            </div>
+        </div>
+    </div>
+);
+
 const RotatePrompt = ({ onClose }: { onClose: () => void }) => (
     <div className="absolute inset-0 z-[60] bg-black/95 flex flex-col items-center justify-center text-center p-6 backdrop-blur-md animate-in fade-in duration-500">
         <button onClick={onClose} className="absolute top-6 right-6 p-2 text-gray-400 hover:text-white transition-colors">
@@ -375,6 +424,8 @@ export default function MobileInvitation({
     const [isOpen, setIsOpen] = useState(false);
     const [isPortrait, setIsPortrait] = useState(false);
     const [startIntro, setStartIntro] = useState(false);
+    const [webglFailed, setWebglFailed] = useState(false);
+    const [view2D, setView2D] = useState(false); // Toggle 2D/3D view
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const [isMuted, setIsMuted] = useState(false);
     const [eventInfo, setEventInfo] = useState<any>(null);
@@ -738,27 +789,56 @@ export default function MobileInvitation({
                             )}
                         </button>
 
-                        {/* FULLSCREEN INDICATOR */}
-                        <div className="fixed top-6 left-6 z-[999999] text-[10px] text-gray-400 font-mono tracking-widest uppercase backdrop-blur-sm bg-black/40 px-3 py-2 rounded-full border border-white/10">
-                            ⚫ Fullscreen Mode
+                        {/* FULLSCREEN INDICATOR + 2D/3D TOGGLE */}
+                        <div className="fixed top-6 left-6 z-[999999] flex items-center gap-3">
+                            <div className="text-[10px] text-gray-400 font-mono tracking-widest uppercase backdrop-blur-sm bg-black/40 px-3 py-2 rounded-full border border-white/10">
+                                ⚫ Fullscreen Mode
+                            </div>
+                            <button
+                                onClick={() => setView2D(!view2D)}
+                                className="px-3 py-2 bg-[#d4af37]/20 hover:bg-[#d4af37]/40 border border-[#d4af37]/50 rounded-full text-[#d4af37] text-xs font-bold tracking-widest uppercase transition-all"
+                                title={view2D ? "Chuyển sang 3D" : "Chuyển sang 2D"}
+                            >
+                                {view2D ? "🎨 2D" : "🎭 3D"}
+                            </button>
                         </div>
 
-                        {!isSafariIOS() ? (
-                            <Canvas shadows camera={{ position: [0, 0, 15], fov: 30 }} gl={{ antialias: true, toneMapping: THREE.ReinhardToneMapping, toneMappingExposure: 1.0 }} dpr={[1, 2]}>
+                        {view2D ? (
+                            <Card2DView guestName={guestName} eventInfo={eventInfo} />
+                        ) : !webglFailed ? (
+                            <Canvas 
+                                shadows 
+                                camera={{ position: [0, 0, 15], fov: 30 }} 
+                                gl={{ 
+                                    antialias: !isSafariIOS(),
+                                    toneMapping: THREE.ReinhardToneMapping, 
+                                    toneMappingExposure: 1.0,
+                                    failIfMajorPerformanceCaveat: false,
+                                }} 
+                                dpr={isSafariIOS() ? 1 : [1, 2]}
+                                onCreated={(state) => {
+                                    try {
+                                        if (!state.gl.capabilities.isWebGL2) {
+                                            console.warn('WebGL2 not supported');
+                                        }
+                                    } catch (e) {
+                                        console.error('WebGL error:', e);
+                                        setWebglFailed(true);
+                                    }
+                                }}
+                            >
                                 <color attach="background" args={['#050505']} />
                                 <SceneSetup />
                                 <OrbitControls enableZoom={true} minDistance={10} maxDistance={25} autoRotate autoRotateSpeed={0.5} enablePan={false} maxPolarAngle={Math.PI / 1.5} minPolarAngle={Math.PI / 3} />
                                 <Suspense fallback={null}><HeroCard guestName={guestName} startIntro={startIntro} eventInfo={eventInfo} /></Suspense>
                                 <ContactShadows position={[0, -3.5, 0]} opacity={0.6} scale={20} blur={3} color="#000" />
-                                <EffectComposer enableNormalPass={false}><Bloom luminanceThreshold={1.2} mipmapBlur intensity={0.4} radius={0.6} /><Noise opacity={0.015} /><Vignette offset={0.3} darkness={0.6} /></EffectComposer>
+                                {!isSafariIOS() && (
+                                    <EffectComposer enableNormalPass={false}><Bloom luminanceThreshold={1.2} mipmapBlur intensity={0.4} radius={0.6} /><Noise opacity={0.015} /><Vignette offset={0.3} darkness={0.6} /></EffectComposer>
+                                )}
                             </Canvas>
                         ) : (
-                            <div className="absolute inset-0 z-20 flex items-center justify-center">
-                                <div className="text-center text-gray-400">
-                                    <p className="mb-4">Safari iOS không hỗ trợ 3D</p>
-                                    <p className="text-sm text-gray-500">Vui lòng sử dụng Chrome hoặc Firefox</p>
-                                </div>
-                            </div>
+                            // WebGL FAILED FALLBACK - 2D Card View
+                            <Card2DView guestName={guestName} eventInfo={eventInfo} />
                         )}
 
                         {/* NAV BUTTON - HIDDEN IN FULLSCREEN MODE */}
