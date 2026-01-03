@@ -1,6 +1,7 @@
 // app/api/chat/route.ts
-import { NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { createClient } from '@supabase/supabase-js';
+import { NextResponse } from 'next/server';
 
 // 1. Cấu hình Key (Giữ nguyên logic cũ)
 const API_KEYS = (process.env.GEMINI_API_KEYS || "").split(',').map(k => k.trim()).filter(k => k);
@@ -8,7 +9,17 @@ const API_KEYS = (process.env.GEMINI_API_KEYS || "").split(',').map(k => k.trim(
 // --- CẤU HÌNH ĐỊA ĐIỂM & BẢN ĐỒ ---
 const CURRENT_HOST_LOCATION = "Tòa nhà C5 (Phòng Hội trường)";
 const SCHOOL_MAP_IMAGE = "media/map2d.png"; 
-const GOOGLE_MAP_LINK = "https://maps.app.goo.gl/iZqvwJVA4CXNEYqm6"; 
+const GOOGLE_MAP_LINK = "https://maps.app.goo.gl/iZqvwJVA4CXNEYqm6";
+const LOCATION_DESCRIPTION = `
+Địa điểm: ${CURRENT_HOST_LOCATION}
+🏫 Đại học Thủy lợi.
+📍 Xem bản đồ chi tiết: [Đại học Thủy lợi](${GOOGLE_MAP_LINK})
+`;
+
+// Supabase client
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const serviceKey = process.env.SUPABASE_SERVICE_KEY || '';
+const supabase = createClient(supabaseUrl, serviceKey); 
 
 async function generateWithFallback(systemPrompt: string, userMessage: string) {
   let lastError = null;
@@ -47,19 +58,40 @@ export async function POST(req: Request) {
     console.log("=========== START DEBUG CHAT REQUEST ===========");
     console.log("1. Tên khách:", guestName);
     console.log("2. Tags:", guestTags);
-    
-    // Kiểm tra kỹ biến guestInfor
-    console.log("3. Biến 'guestInfor' nhận được:", guestInfor); 
-    if (guestInfor) {
-        console.log("   -> TRẠNG THÁI: OK (Có dữ liệu)");
-    } else {
-        console.log("   -> TRẠNG THÁI: NULL/UNDEFINED (Frontend chưa gửi hoặc DB rỗng)");
-    }
+    console.log("3. Biến 'guestInfor' nhận được:", guestInfor);
     console.log("=========== END DEBUG ===========");
     // =======================================================
 
     const lastUserMessage = messages[messages.length - 1]?.content || "Xin chào";
 
+    // --- FETCH EVENT INFO từ Supabase ---
+    let eventInfo = "";
+    try {
+      const { data, error } = await supabase
+        .from('event_info')
+        .select('*')
+        .eq('id', 'main_event')
+        .single();
+      
+      if (data && !error) {
+        eventInfo = `
+THÔNG TIN BỮA TIỆC:
+${data.text ? `- Mô tả: ${data.text}` : ''}
+${data.time_info ? `- Giờ: ${data.time_info}` : ''}
+${data.location_info ? `- Địa điểm chi tiết: ${data.location_info}` : ''}
+${data.contact_info ? `- Liên hệ: ${data.contact_info}` : ''}
+${data.current_location ? `- Vị trí hiện tại: ${data.current_location}` : ''}
+        `;
+        console.log('✅ Fetched event info from DB');
+      }
+    } catch (e) {
+      console.warn('⚠️ Failed to fetch event info:', e);
+    }
+
+    // --- DETECT nếu user hỏi về EVENT ---
+    const eventKeywords = ['buổi lễ', 'tiệc', 'sự kiện', 'giờ', 'mấy giờ', 'bao giờ', 'lúc nào', 'địa điểm', 'ở đâu', 'chỗ nào', 'vị trí', 'thông tin', 'chi tiết', 'bữa tiệc', 'lễ tốt nghiệp'];
+    const isEventQuestion = eventKeywords.some(keyword => lastUserMessage.toLowerCase().includes(keyword));
+    
     // --- LOGIC PHÂN LOẠI ĐỐI TƯỢNG ---
     const tagsStr = Array.isArray(guestTags) ? guestTags.join(', ').toLowerCase() : "";
     
@@ -72,8 +104,7 @@ export async function POST(req: Request) {
         toneInstruction = "Thân thiện, nhiệt tình nhưng vẫn giữ chút 'chảnh' của loài mèo. Gọi là 'Khách quý'.";
     }
 
-    // --- SYSTEM PROMPT MỚI ---
-    // [QUAN TRỌNG] Đã thêm dòng 'LƯU Ý ĐẶC BIỆT' để AI đọc được guestInfor
+    // --- SYSTEM PROMPT VỚI EVENT INFO ---
     const systemPrompt = `
     BẠN LÀ AI: 
     Bạn là Catmi. 
@@ -84,29 +115,42 @@ export async function POST(req: Request) {
     - Tên: ${guestName || "Khách quý"}
     - Nhóm: ${tagsStr || "Khách mời"}
     - Trạng thái RSVP: ${guestStatus ? "Đã tham gia" : "Chưa xác nhận"}
-    - THÔNG TIN RIÊNG (LƯU Ý ĐẶC BIỆT): ${guestInfor ? guestInfor : "Không có"}  <-- DÒNG MỚI QUAN TRỌNG NÀY
+    - THÔNG TIN RIÊNG: ${guestInfor ? guestInfor : "Không có"}
     
-    CHỈ ĐƯỜNG:
-    - Vị trí: ${CURRENT_HOST_LOCATION}.
-    - Link Map: ${GOOGLE_MAP_LINK}
-    - QUY TẮC QUAN TRỌNG: Khi gửi link bản đồ, BẮT BUỘC viết đúng format này: [Đại học Thủy lợi](${GOOGLE_MAP_LINK})
-    (Không được gửi link trần).
+    ${isEventQuestion ? `THÔNG TIN BỮA TIỆC - TRUYỀN ĐẠI:
+${eventInfo}` : ''}
+    
+    CHỈ ĐƯỜNG & VỊ TRỊ:
+    ${LOCATION_DESCRIPTION}
 
     TÍNH CÁCH & GIỌNG ĐIỆU (QUAN TRỌNG):
     ${toneInstruction}
 
     QUY TẮC TRẢ LỜI:
     1. Bắt đầu câu bằng 1 Tag cảm xúc: [Welcome], [Thinking], [Sassy], [Annoyed], [Tired], [Success], [Listening], [Playful], [Happy], [Sad], [Angry], [Cute], [Guiding].
-    2. Nếu khách hỏi đường/vị trí: Dùng tag [Guiding].
-    3. Ngắn gọn, súc tích.
+    2. Nếu khách hỏi về EVENT/BUỔI LỄ: Dùng tag [Guiding], trả lời CHI TIẾT bao gồm:
+       - Thời gian (giờ, ngày)
+       - Địa điểm cụ thể
+       - Thông tin liên hệ
+       - Link bản đồ: [Đại học Thủy lợi](${GOOGLE_MAP_LINK})
+    3. Nếu khách hỏi vị trí/địa điểm: BẮT BUỘC kèm link bản đồ
+    4. Ngắn gọn nhưng đủ thông tin, không bỏ sót chi tiết quan trọng
+    5. Khi nhắc đến địa điểm, LUÔN kèm theo link bản đồ
     `;
 
     const aiReply = await generateWithFallback(systemPrompt, lastUserMessage);
+    
+    // Nếu là câu hỏi về event, thêm map vào response
+    let finalResponse = { role: 'assistant', content: aiReply, includeMap: false };
+    
+    if (isEventQuestion) {
+      finalResponse.includeMap = true;
+    }
 
-    return NextResponse.json({ role: 'assistant', content: aiReply });
+    return NextResponse.json(finalResponse);
 
   } catch (error: any) {
-    console.error("Lỗi Server:", error); // Log lỗi ra xem cho dễ
+    console.error("Lỗi Server:", error);
     return NextResponse.json(
       { role: 'assistant', content: '[Tired] Hic, server lỗi rồi khách quý ơi...' }, 
       { status: 500 }

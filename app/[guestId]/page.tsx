@@ -46,12 +46,13 @@ export default async function GuestPage({ params }: GuestPageProps) {
         />
       )}
 
-      {/* 2. Catmi Chat - Truyền thêm guestId */}
+      {/* 2. Catmi Chat - Truyền thêm guest object */}
       <CatmiChat 
           guestName={guest.id}
           guestStatus={isConfirmed}
           guestTags={guest.tags}
           guestInfor={guest.infor}
+          guest={guest}
       />
     </>
   );
