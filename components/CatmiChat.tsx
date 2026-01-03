@@ -430,12 +430,12 @@ export default function CatmiChat({ guestName, guestStatus, guestTags, guestInfo
 
       const content = `Thông tin buổi lễ của Đức Kiên:
 
-📍 **Địa điểm:** ${data.location_info || 'Chưa xác định'}
-🕐 **Thời gian:** ${data.time_info || 'Chưa xác định'}
-📞 **Liên hệ:** ${data.contact_info || 'Chưa xác định'}
-📍 **Vị trí hiện tại:** ${data.current_location || 'Đang ở nhà'}
+        📍 **Địa điểm:** ${data.location_info || 'Chưa xác định'}
+        🕐 **Thời gian:** ${data.time_info || 'Chưa xác định'}
+        📞 **Liên hệ:** ${data.contact_info || 'Chưa xác định'}
+        📍 **Vị trí hiện tại:** ${data.current_location || 'Đang ở nhà'}
 
-Xem bản đồ chi tiết: [Đại học Thủy lợi](https://maps.app.goo.gl/iZqvwJVA4CXNEYqm6)`;
+        Xem bản đồ chi tiết: [Đại học Thủy lợi](https://maps.app.goo.gl/iZqvwJVA4CXNEYqm6)`;
       
       setMessages(prev => [...prev, { role: 'assistant', content }]);
       

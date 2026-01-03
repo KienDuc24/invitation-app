@@ -16,6 +16,20 @@ const isSafariIOS = () => {
     return /iPad|iPhone|iPod/.test(ua) && /Safari/.test(ua) && !/Chrome/.test(ua);
 };
 
+// --- CHECK WebGL SUPPORT ---
+const isWebGLSupported = () => {
+    try {
+        const canvas = document.createElement('canvas');
+        return !!(
+            window.WebGLRenderingContext && (
+                canvas.getContext('webgl') || canvas.getContext('experimental-webgl')
+            )
+        );
+    } catch (e) {
+        return false;
+    }
+};
+
 // --- ERROR BOUNDARY ---
 class ErrorBoundary extends React.Component<any, any> {
     constructor(props: any) {
