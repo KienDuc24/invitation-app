@@ -5,7 +5,6 @@ import { supabase } from "@/lib/supabase";
 import {
   Calendar,
   CheckCircle,
-  ChevronLeft,
   Hash,
   Heart,
   Info,
@@ -29,6 +28,7 @@ interface AdminGroupInfo {
     tag: string;
     name: string;
     avatar_url?: string;
+    member_count?: number;
 }
 
 export default function AdminPage() {
@@ -41,7 +41,7 @@ export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<'overview' | 'wishes' | 'chat' | 'info'>('overview');
 
   const [chatGroups, setChatGroups] = useState<AdminGroupInfo[]>([]);
-  const [selectedGroup, setSelectedGroup] = useState<string>('general');
+  const [selectedGroup, setSelectedGroup] = useState<string>('');
   const [unreadGroupTags, setUnreadGroupTags] = useState<string[]>([]);
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [showChatSidebar, setShowChatSidebar] = useState<boolean>(false);
@@ -217,9 +217,17 @@ export default function AdminPage() {
     const { data: guestsData } = await supabase.from('guests').select('*').order('is_confirmed', { ascending: false });
     const { data: confessionsData } = await supabase.from('confessions').select('*, guests(name, avatar_url)').order('created_at', { ascending: false });
     const { data: groupsInfoData } = await supabase.from('chat_groups').select('*');
+    // Fetch group members để tính member_count chính xác
+    const { data: groupMembersData } = await supabase.from('group_members').select('group_tag');
 
     const groupsInfoMap: Record<string, any> = {};
     groupsInfoData?.forEach((g: any) => { groupsInfoMap[g.tag] = g; });
+
+    // Tính member_count từ group_members table
+    const memberCountMap: Record<string, number> = {};
+    groupMembersData?.forEach((m: any) => {
+        memberCountMap[m.group_tag] = (memberCountMap[m.group_tag] || 0) + 1;
+    });
 
     let adminData: any = null;
     
@@ -247,10 +255,41 @@ export default function AdminPage() {
             return {
                 tag: tag,
                 name: info?.name || (tag === 'general' ? 'Hội trường chính' : `Nhóm ${tag}`),
-                avatar_url: info?.avatar_url
+                avatar_url: info?.avatar_url,
+                member_count: memberCountMap[tag] || 0
             };
         });
         setChatGroups(formattedGroups);
+
+        // Fetch unread messages từ database
+        if (adminData?.id) {
+            const { data: adminGroupMembers } = await supabase
+                .from('group_members')
+                .select('group_tag, last_viewed_at')
+                .eq('guest_id', adminData.id);
+
+            const unreadMap: Record<string, number> = {};
+            const unreadTags: string[] = [];
+
+            // Tính unread cho từng nhóm
+            for (const groupMember of adminGroupMembers || []) {
+                const { data: messages } = await supabase
+                    .from('messages')
+                    .select('created_at', { count: 'exact' })
+                    .eq('group_tag', groupMember.group_tag)
+                    .gt('created_at', groupMember.last_viewed_at || '1970-01-01');
+                
+                const count = messages?.length || 0;
+                if (count > 0) {
+                    unreadMap[groupMember.group_tag] = count;
+                    unreadTags.push(groupMember.group_tag);
+                }
+            }
+
+            setUnreadCounts(unreadMap);
+            setUnreadGroupTags(unreadTags);
+            console.log('💬 [Admin] Unread messages:', unreadMap);
+        }
     }
     // 🔄 Set confessions to state - CRITICAL FIX
     if (confessionsData) {
@@ -736,85 +775,87 @@ export default function AdminPage() {
         )}
 
         {activeTab === 'chat' && !selectedGroup && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6 animate-in fade-in">
+            <div className="space-y-2 md:space-y-3 animate-in fade-in">
               {chatGroups.length === 0 ? (
-                <p className="text-gray-500 italic text-center col-span-full py-20">Chưa có nhóm nào...</p>
+                <p className="text-gray-500 italic text-center py-20">Chưa có nhóm nào...</p>
               ) : (
-                chatGroups.map(group => {
-                  const hasUnread = unreadGroupTags.includes(group.tag);
-                  const unreadCount = unreadCounts[group.tag] || 0;
-                  return (
-                    <button
-                      key={group.tag}
-                      onClick={() => {
-                        setSelectedGroup(group.tag);
-                        setUnreadGroupTags(prev => prev.filter(t => t !== group.tag));
-                        setUnreadCounts(prev => ({ ...prev, [group.tag]: 0 }));
-                      }}
-                      className={`relative border rounded-2xl md:rounded-3xl p-4 md:p-6 transition-all hover:scale-105 active:scale-95 text-left group ${hasUnread ? 'bg-gradient-to-br from-[#1a4d2e]/40 to-[#0a0a0a] border-[#10b981]/50 shadow-lg shadow-[#10b981]/20' : 'bg-[#111] border-[#333] hover:border-[#d4af37]/40'}`}
-                    >
-                      {/* Unread indicator */}
-                      {hasUnread && (
-                        <div className="absolute top-3 right-3 flex items-center gap-1.5 bg-red-600 px-2 py-1 rounded-full">
-                          <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
-                          <span className="text-[9px] font-black text-white">{unreadCount}</span>
-                        </div>
-                      )}
-
-                      {/* Group Info */}
-                      <div className="flex items-center gap-3 md:gap-4 mb-4 md:mb-6">
-                        <div className={`w-12 md:w-14 h-12 md:h-14 rounded-xl flex items-center justify-center overflow-hidden flex-shrink-0 border-2 ${hasUnread ? 'border-[#10b981] bg-[#0a3d1f]/60' : 'border-[#333] bg-[#0a0a0a]'}`}>
+                (() => {
+                  // Sắp xếp nhóm: nhóm có tin mới lên đầu
+                  const sorted = [...chatGroups].sort((a, b) => {
+                    const aHasUnread = unreadGroupTags.includes(a.tag);
+                    const bHasUnread = unreadGroupTags.includes(b.tag);
+                    return aHasUnread === bHasUnread ? 0 : aHasUnread ? -1 : 1;
+                  });
+                  return sorted.map(group => {
+                    const hasUnread = unreadGroupTags.includes(group.tag);
+                    const unreadCount = unreadCounts[group.tag] || 0;
+                    return (
+                      <button
+                        key={group.tag}
+                        onClick={() => {
+                          setSelectedGroup(group.tag);
+                          setUnreadGroupTags(prev => prev.filter(t => t !== group.tag));
+                          setUnreadCounts(prev => ({ ...prev, [group.tag]: 0 }));
+                        }}
+                        className={`w-full relative border rounded-xl md:rounded-2xl px-4 md:px-5 py-3 md:py-4 transition-all hover:scale-[1.01] active:scale-95 text-left flex items-start gap-3 md:gap-4 ${hasUnread ? 'bg-gradient-to-r from-[#1a4d2e]/40 to-[#0a0a0a] border-[#10b981]/50 shadow-lg shadow-[#10b981]/10' : 'bg-[#111] border-[#333] hover:border-[#d4af37]/40'}`}
+                      >
+                        {/* Avatar */}
+                        <div className={`w-12 md:w-14 h-12 md:h-14 rounded-lg flex items-center justify-center overflow-hidden flex-shrink-0 border-2 ${hasUnread ? 'border-[#10b981] bg-[#0a3d1f]/60' : 'border-[#333] bg-[#0a0a0a]'}`}>
                           {group.avatar_url ? (
                             <img src={group.avatar_url} className="w-full h-full object-cover" alt={group.name} />
                           ) : (
                             <Hash size={24} className="text-gray-500" />
                           )}
                         </div>
-                        <div className="min-w-0 flex-1">
-                          <h3 className={`font-bold text-sm md:text-base truncate ${hasUnread ? 'text-[#10b981]' : 'text-white'}`}>
-                            {group.name}
-                          </h3>
-                          <p className="text-[9px] md:text-xs text-gray-500 uppercase font-bold tracking-tight">#{group.tag}</p>
-                        </div>
-                      </div>
 
-                      {/* Status */}
-                      <div className="text-[8px] md:text-xs text-gray-400">
-                        {hasUnread ? (
-                          <span className="text-[#10b981] font-bold">● Có tin mới</span>
-                        ) : (
-                          <span>Nhóm trò chuyện</span>
+                        {/* Group Details */}
+                        <div className="min-w-0 flex-1 pt-0.5">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h3 className={`font-bold text-sm md:text-base ${hasUnread ? 'text-[#10b981]' : 'text-white'}`}>
+                              {group.name}
+                            </h3>
+                            <p className="text-[8px] md:text-[9px] text-gray-500 uppercase font-bold tracking-tight">#{group.tag}</p>
+                          </div>
+                          <p className="text-[8px] md:text-xs text-gray-400 mt-1">
+                            👥 {group.member_count || 0} thành viên
+                          </p>
+                        </div>
+
+                        {/* Unread indicator with count */}
+                        {hasUnread && unreadCount > 0 && (
+                          <div className="flex items-center justify-center bg-red-600 w-7 h-7 rounded-full flex-shrink-0 mt-1">
+                            <span className="text-white font-bold text-xs">{unreadCount}</span>
+                          </div>
                         )}
-                      </div>
-                    </button>
-                  );
-                })
+                      </button>
+                    );
+                  });
+                })()
               )}
             </div>
         )}
 
         {activeTab === 'chat' && selectedGroup && (
-            <div className="h-full flex flex-col border border-[#333] rounded-[2rem] overflow-hidden bg-[#111] shadow-2xl animate-in fade-in relative" style={{height: 'calc(100vh - 350px)'}}>
-                {/* Header */}
-                <div className="absolute top-0 left-0 right-0 z-20 bg-[#1a1a1a]/90 p-2 md:p-3 border-b border-[#333] flex justify-between px-3 md:px-6 items-center h-12 md:h-14">
-                    <div className="flex items-center gap-2 md:gap-3 flex-1 min-w-0">
-                      <button
-                        onClick={() => setSelectedGroup('')}
-                        className="p-1.5 md:p-2 bg-[#222] text-[#d4af37] rounded-lg hover:bg-[#333] transition-colors flex-shrink-0"
-                      >
-                        <ChevronLeft size={18} />
-                      </button>
-                      <div className="min-w-0 flex-1">
-                        <span className="text-[9px] md:text-[10px] uppercase font-bold text-gray-500 tracking-tighter block truncate">#{selectedGroup}</span>
-                        <p className="text-[8px] md:text-xs text-gray-400 truncate">{chatGroups.find(g => g.tag === selectedGroup)?.name}</p>
-                      </div>
-                    </div>
-                    <span className="text-[8px] md:text-[9px] bg-red-500/20 px-2 py-0.5 rounded text-red-400 font-bold uppercase whitespace-nowrap flex-shrink-0">Admin</span>
-                </div>
-
-                {/* Chat Area */}
-                <div className="pt-12 md:pt-14 h-full">
-                    {adminUser ? <ChatGroup key={selectedGroup} currentUser={adminUser} groupTag={selectedGroup} onBack={() => setSelectedGroup('')} onLeaveGroup={() => {}} /> : <Loader2 className="animate-spin mx-auto mt-20 text-[#d4af37]"/>}
+            <div className="fixed inset-0 z-[100] bg-[#050505] min-h-screen flex flex-col animate-in slide-in-from-right-10 duration-300">
+                <div className="flex-1 flex flex-col overflow-hidden">
+                    {adminUser ? (
+                        <>
+                            <ChatGroup key={selectedGroup} currentUser={adminUser} groupTag={selectedGroup} onBack={() => {
+                                // Mark as read khi đóng chat
+                                if (adminUser?.id) {
+                                    supabase.from('group_members')
+                                        .update({ last_viewed_at: new Date().toISOString() })
+                                        .eq('guest_id', adminUser.id)
+                                        .eq('group_tag', selectedGroup)
+                                        .then(() => {
+                                            setUnreadGroupTags(prev => prev.filter(t => t !== selectedGroup));
+                                            setUnreadCounts(prev => ({ ...prev, [selectedGroup]: 0 }));
+                                        });
+                                }
+                                setSelectedGroup('');
+                            }} onLeaveGroup={() => {}} />
+                        </>
+                    ) : <Loader2 className="animate-spin mx-auto mt-20 text-[#d4af37]"/>}
                 </div>
             </div>
         )}
