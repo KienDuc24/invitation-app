@@ -46,6 +46,7 @@ interface NetworkProps {
   onPreviewGroup: (group: ChatGroupInfo) => void; 
   onInvitePerson: (personId: string, personName: string) => void;
   unreadGroupTags?: string[]; // Thêm dòng này (có dấu ?)
+  unreadCounts?: Record<string, number>; // Thêm unread count cho từng nhóm
 }
 
 export default function NetworkSection({ 
@@ -54,13 +55,15 @@ export default function NetworkSection({
     joinedGroups,
     onPreviewGroup, 
     onInvitePerson,
-    unreadGroupTags = [] // --- UPDATE 2: Nhận prop này (mặc định là mảng rỗng) ---
+    unreadGroupTags = [], // --- UPDATE 2: Nhận prop này (mặc định là mảng rỗng) ---
+    unreadCounts = {}
 }: NetworkProps) {
   const [people, setPeople] = useState<SuggestionPerson[]>([]);
   const [groups, setGroups] = useState<ChatGroupInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedPerson, setSelectedPerson] = useState<PersonModalData | null>(null);
   const [personGroups, setPersonGroups] = useState<ChatGroupInfo[]>([]);
+  const [lastUnreadTimes, setLastUnreadTimes] = useState<Record<string, string>>({});
 
   const getGroupMetadata = (tag: string) => {
     if (KNOWN_GROUPS[tag]) return KNOWN_GROUPS[tag];
@@ -99,10 +102,27 @@ export default function NetworkSection({
           const { count: memberCount } = await supabase.from('group_members').select('*', { count: 'exact', head: true }).eq('group_tag', tag);
 
           let unreadCount = 0;
+          let lastUnreadTime = '';
           if (joinedGroups.includes(tag)) {
               const lastViewed = lastViewedMap[tag] || '2000-01-01T00:00:00.000Z';
               const { count } = await supabase.from('messages').select('*', { count: 'exact', head: true }).eq('group_tag', tag).gt('created_at', lastViewed);
               unreadCount = count || 0;
+              
+              // Fetch tin nhắn chưa đọc mới nhất
+              if (unreadCount > 0) {
+                const { data: lastMsg } = await supabase
+                  .from('messages')
+                  .select('created_at')
+                  .eq('group_tag', tag)
+                  .gt('created_at', lastViewed)
+                  .order('created_at', { ascending: false })
+                  .limit(1)
+                  .single();
+                
+                if (lastMsg?.created_at) {
+                  lastUnreadTime = lastMsg.created_at;
+                }
+              }
           }
 
           return {
@@ -114,11 +134,22 @@ export default function NetworkSection({
               member_count: memberCount || 0,
               is_joined: joinedGroups.includes(tag),
               unread_count: unreadCount,
-              avatar_url: finalAvatar 
+              avatar_url: finalAvatar,
+              lastUnreadTime: lastUnreadTime
           };
       });
 
       const resolvedGroups = await Promise.all(groupPromises);
+      
+      // Lưu lastUnreadTimes
+      const unreadTimesMap: Record<string, string> = {};
+      resolvedGroups.forEach(g => {
+        if ((g as any).lastUnreadTime) {
+          unreadTimesMap[g.tag_identifier] = (g as any).lastUnreadTime;
+        }
+      });
+      setLastUnreadTimes(unreadTimesMap);
+      
       const sortedGroups = resolvedGroups.sort((a, b) => {
          if (a.is_joined && !b.is_joined) return -1;
          if (!a.is_joined && b.is_joined) return 1;
@@ -142,9 +173,19 @@ export default function NetworkSection({
     fetchNetwork();
     
     const channel = supabase.channel('network_updates').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload: any) => {
+          const newMsg = payload.new;
+          // Cập nhật unread count và lastUnreadTime khi có tin nhắn mới
           setGroups(prev => prev.map(g => {
-              if (g.tag_identifier === payload.new.group_tag && g.is_joined) { return { ...g, unread_count: g.unread_count + 1 }; }
+              if (g.tag_identifier === newMsg.group_tag && g.is_joined) { 
+                return { ...g, unread_count: g.unread_count + 1 }; 
+              }
               return g;
+          }));
+          
+          // Cập nhật lastUnreadTime để sorting hoạt động
+          setLastUnreadTimes(prev => ({
+            ...prev,
+            [newMsg.group_tag]: newMsg.created_at
           }));
       }).subscribe();
 
@@ -200,6 +241,9 @@ export default function NetworkSection({
     setPersonGroups(resolvedGroups);
   };
 
+  // Tính tổng unread count
+  const totalUnreadCount = Object.values(unreadCounts).reduce((sum, count) => sum + count, 0);
+
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-right-5 duration-500">
       
@@ -232,34 +276,60 @@ export default function NetworkSection({
       {/* 2. DANH SÁCH NHÓM */}
       <div className="space-y-3">
          <h3 className="text-gray-400 text-[10px] font-bold uppercase tracking-widest flex items-center gap-1.5 px-1">
-            <Hash size={12} /> Các nhóm đề xuất
+            <Hash size={12} /> Các nhóm
+            {totalUnreadCount > 0 && (
+              <span className="ml-auto bg-red-600 text-white text-[9px] px-2 py-0.5 rounded-full font-bold">
+                {totalUnreadCount > 99 ? '99+' : totalUnreadCount}
+              </span>
+            )}
          </h3>
          
-         <div className="grid grid-cols-1 gap-2">
-            {groups.map((group) => {
+         <div className="grid grid-cols-1 gap-3">
+            {groups
+              .sort((a, b) => {
+                const aUnreadNum = unreadCounts[a.tag_identifier] || a.unread_count || 0;
+                const bUnreadNum = unreadCounts[b.tag_identifier] || b.unread_count || 0;
+                
+                // Nếu chỉ một bên có tin chưa đọc, nó lên đầu
+                if ((aUnreadNum > 0) !== (bUnreadNum > 0)) {
+                  return (aUnreadNum > 0) ? -1 : 1;
+                }
+                
+                // Nếu cả hai đều có tin chưa đọc, sắp xếp theo thời gian tin nhắn mới nhất
+                if (aUnreadNum > 0 && bUnreadNum > 0) {
+                  const aTime = lastUnreadTimes[a.tag_identifier] ? new Date(lastUnreadTimes[a.tag_identifier]).getTime() : 0;
+                  const bTime = lastUnreadTimes[b.tag_identifier] ? new Date(lastUnreadTimes[b.tag_identifier]).getTime() : 0;
+                  return bTime - aTime; // Tin nhắn mới nhất lên đầu
+                }
+                
+                // Nếu cả hai đều không có tin chưa đọc, giữ nguyên thứ tự
+                return 0;
+              })
+              .map((group) => {
                 const Icon = group.icon || Hash;
                 
                 // --- UPDATE 3: Logic kiểm tra có tin mới (từ DB hoặc từ Realtime prop) ---
                 const hasNewMessage = group.unread_count > 0 || unreadGroupTags.includes(group.tag_identifier);
+                const unreadCountNum = unreadCounts[group.tag_identifier] || group.unread_count || 0;
 
                 return (
                     <button 
                         key={group.id}
                         onClick={() => onPreviewGroup(group)}
-                        className="flex items-center justify-between bg-[#111] hover:bg-[#1a1a1a] border border-[#333] hover:border-[#d4af37]/40 p-3.5 rounded-xl transition-all group text-left shadow-sm active:scale-[0.98] relative"
+                        className={`flex items-center justify-between bg-[#111] hover:bg-[#1a1a1a] border transition-all group text-left shadow-sm active:scale-[0.98] relative p-4 rounded-2xl ${hasNewMessage ? 'border-[#10b981]/50 hover:border-[#10b981]' : 'border-[#333] hover:border-[#d4af37]/40'}`}
                     >
                         <div className="flex items-center gap-3">
                             <div className="relative"> 
-                                <div className={`w-11 h-11 rounded-xl flex items-center justify-center transition-colors border overflow-hidden ${group.is_joined ? 'bg-[#d4af37]/10 text-[#d4af37] border-[#d4af37]/20' : 'bg-[#222] text-gray-400 border-transparent'}`}>
+                                <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-colors border overflow-hidden ${group.is_joined ? 'bg-[#d4af37]/10 text-[#d4af37] border-[#d4af37]/20' : 'bg-[#222] text-gray-400 border-transparent'}`}>
                                     {group.avatar_url ? (
                                         <img src={group.avatar_url} className="w-full h-full object-cover" />
                                     ) : (
                                         group.is_joined ? <Icon size={20} /> : <Lock size={18} />
                                     )}
                                 </div>
-                                {hasNewMessage && (
-                                    <div className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[9px] font-bold min-w-[16px] h-[16px] flex items-center justify-center rounded-full border-2 border-[#111] animate-bounce shadow-sm z-20">
-                                        {group.unread_count > 9 ? '9+' : (group.unread_count || '!')}
+                                {hasNewMessage && unreadCountNum > 0 && (
+                                    <div className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[9px] font-bold min-w-[18px] h-[18px] flex items-center justify-center rounded-full border-2 border-[#111] shadow-sm z-20">
+                                        {unreadCountNum > 9 ? '9+' : unreadCountNum}
                                     </div>
                                 )}
                             </div>

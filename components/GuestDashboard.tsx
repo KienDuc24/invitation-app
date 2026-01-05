@@ -46,6 +46,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
   const [selectedChatGroup, setSelectedChatGroup] = useState<string | null>(null); // Fullscreen chat group
   const [unreadCount, setUnreadCount] = useState(0);
   const [unreadGroupTags, setUnreadGroupTags] = useState<string[]>([]);
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [avatarUrl, setAvatarUrl] = useState<string | null>(guest.avatar_url || null);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
@@ -1419,10 +1420,20 @@ export default function GuestDashboard({ guest }: DashboardProps) {
   };
 
   // --- 5. HÀM KÍCH HOẠT THÔNG BÁO (HIỆN NHÓM VÀ NGƯỜI GỬI) ---
-  const triggerNotification = (msg: any) => {
+  const triggerNotification = async (msg: any) => {
       playSystemSound();
 
-      const groupName = GROUP_NAMES[msg.group_tag] || `Nhóm ${msg.group_tag}`;
+      // Lấy tên nhóm từ DB hoặc từ GROUP_NAMES
+      let groupName = GROUP_NAMES[msg.group_tag];
+      if (!groupName) {
+        try {
+          const { data } = await supabase.from('chat_groups').select('name').eq('tag', msg.group_tag).single();
+          groupName = data?.name || `Nhóm ${msg.group_tag}`;
+        } catch (e) {
+          groupName = `Nhóm ${msg.group_tag}`;
+        }
+      }
+      
       const notiTitle = `Tin nhắn từ ${groupName}`;
       const notiContent = `${msg.sender_name}: ${msg.content || "Đã gửi một ảnh"}`;
 
@@ -1485,7 +1496,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
   useEffect(() => { if (activeChatTag) { markGroupAsRead(activeChatTag); } }, [activeChatTag]);
   
   const fetchUnreadMessages = async () => {
-  if (joinedGroups.length === 0) { setUnreadCount(0); return; }
+  if (joinedGroups.length === 0) { setUnreadCount(0); setUnreadCounts({}); return; }
   try {
     const { data: membersData } = await supabase
       .from('group_members')
@@ -1494,6 +1505,9 @@ export default function GuestDashboard({ guest }: DashboardProps) {
       .in('group_tag', joinedGroups);
     
     if (!membersData) return;
+    
+    const unreadMap: Record<string, number> = {};
+    const unreadTags: string[] = [];
     
     const counts = await Promise.all(membersData.map(async (mem) => {
       const lastViewed = mem.last_viewed_at || '2000-01-01T00:00:00.000Z';
@@ -1505,13 +1519,17 @@ export default function GuestDashboard({ guest }: DashboardProps) {
         .gt('created_at', lastViewed)
         .neq('sender_id', guest.id); // 🔥 QUAN TRỌNG: Không đếm tin nhắn do chính mình gửi
 
-      if (count && count > 0) {
-        setUnreadGroupTags(prev => prev.includes(mem.group_tag) ? prev : [...prev, mem.group_tag]);
-      } else {
-        setUnreadGroupTags(prev => prev.filter(t => t !== mem.group_tag));
+      const unreadCount = count || 0;
+      unreadMap[mem.group_tag] = unreadCount;
+      
+      if (unreadCount > 0) {
+        unreadTags.push(mem.group_tag);
       }
-      return count || 0;
+      return unreadCount;
     }));
+    
+    setUnreadCounts(unreadMap);
+    setUnreadGroupTags(unreadTags);
     setUnreadCount(counts.reduce((acc, curr) => acc + curr, 0));
   } catch (error) { console.error(error); }
 };
@@ -2179,7 +2197,8 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                      joinedGroups={joinedGroups}
                      onPreviewGroup={handlePreviewGroup} 
                      onInvitePerson={() => {}}
-                     unreadGroupTags={unreadGroupTags} 
+                     unreadGroupTags={unreadGroupTags}
+                     unreadCounts={unreadCounts}
                  />
              )}
              {previewGroup && (
