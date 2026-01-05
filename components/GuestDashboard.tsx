@@ -85,6 +85,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
   const [guestComments, setGuestComments] = useState<any[]>([]);
   const [commentInput, setCommentInput] = useState("");
   const [isPostingComment, setIsPostingComment] = useState(false);
+  const [loadingCommentsFor, setLoadingCommentsFor] = useState<string | null>(null);
   const [guestLikes, setGuestLikes] = useState<Set<string>>(new Set());
 
   const [commentsByConfession, setCommentsByConfession] = useState<Record<string, any[]>>({});
@@ -452,6 +453,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
 
   const fetchComments = async (confessionId: string) => {
     try {
+      setLoadingCommentsFor(confessionId);
       console.log('💬 [fetchComments] Starting fetch for confession:', confessionId);
       console.log('💬 [fetchComments] URL:', `/api/confessions/comments?confessionId=${confessionId}`);
       
@@ -463,6 +465,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
         console.error('❌ [fetchComments] Response NOT OK - status:', response.status);
         const errorData = await response.text();
         console.error('❌ [fetchComments] Error response body:', errorData);
+        setLoadingCommentsFor(null);
         return;
       }
       
@@ -492,6 +495,8 @@ export default function GuestDashboard({ guest }: DashboardProps) {
       console.error('❌ [fetchComments] CATCH ERROR:', error);
       console.error('❌ [fetchComments] Error message:', error instanceof Error ? error.message : String(error));
       console.error('❌ [fetchComments] Full error:', error);
+    } finally {
+      setLoadingCommentsFor(null);
     }
   };
 
@@ -2496,7 +2501,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                   )}
 
                   {/* Nội dung */}
-                  <div className="p-6 space-y-4 flex-1">
+                  <div className="p-6 space-y-4 flex-1 overflow-y-auto flex flex-col">
                     <p className="text-gray-100 text-base leading-relaxed">{selectedConfession.content}</p>
 
                     <div className="flex items-center justify-between pt-4 border-t border-[#222]">
@@ -2507,7 +2512,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
 
                     {/* Guest Interactions Section - Only for public confessions or post author */}
                     {(selectedConfession.visibility === 'everyone' || selectedConfession.guest_id === guest.id) && (
-                      <div className="space-y-4">
+                      <div className="space-y-4 flex flex-col h-full">
                         {/* Like Button */}
                         <div className="flex items-center gap-3 flex-wrap">
                           <button 
@@ -2546,36 +2551,13 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                         </div>
 
                         {/* Comments Section */}
-                        <div className="space-y-3 pt-4 border-t border-[#222]">
+                        <div className="space-y-3 pt-4 border-t border-[#222] flex flex-col flex-1 min-h-0">
                           <p className="text-gray-400 text-xs uppercase font-black tracking-widest">
                             💬 Bình luận ({getCommentCount(selectedConfession?.id || '')})
                           </p>
                           
-                          {/* Comment Input */}
-                          <div className="flex gap-2">
-                            <input 
-                              type="text"
-                              value={commentInput}
-                              onChange={(e) => setCommentInput(e.target.value)}
-                              placeholder="Viết bình luận..."
-                              className="flex-1 bg-[#222] border border-[#333] rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:border-[#d4af37] outline-none"
-                              onKeyPress={(e) => {
-                                if (e.key === 'Enter' && !isPostingComment) {
-                                  handlePostComment(selectedConfession.id);
-                                }
-                              }}
-                            />
-                            <button 
-                              onClick={() => handlePostComment(selectedConfession.id)}
-                              disabled={isPostingComment || !commentInput.trim()}
-                              className="bg-[#d4af37] text-black px-3 py-2 rounded-lg hover:bg-[#b89628] transition-colors disabled:opacity-50 flex items-center gap-2 font-bold text-sm"
-                            >
-                              {isPostingComment ? <Loader2 size={16} className="animate-spin"/> : <Send size={16}/>}
-                            </button>
-                          </div>
-
-                          {/* Comments List */}
-                          <div className="space-y-2">
+                          {/* Comments List - Scrollable */}
+                          <div className="space-y-2 flex-1 overflow-y-auto pr-2">
                             {(() => {
                               const confId = selectedConfession?.id || '';
                               const comments = commentsByConfession[confId] || [];
@@ -2585,51 +2567,106 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                               console.log('📋 [Comments Section] Admin info:', adminInfo);
                               return null;
                             })()}
-                            {selectedConfession.admin_comment && adminInfo && (
-                              <div className="bg-[#0a0a0a] rounded-lg p-3 border border-[#333]">
-                                <div className="flex items-center gap-2 mb-2">
-                                  <img 
-                                    src={getAvatarUrl(adminInfo.avatar_url || '', adminInfo.name || 'Admin')} 
-                                    alt={adminInfo.name}
-                                    className="w-6 h-6 rounded-full object-cover border border-gray-600"
-                                  />
-                                  <span className="text-gray-300 text-xs font-bold">{adminInfo.name}</span>
-                                </div>
-                                <p className="text-gray-200 text-sm leading-relaxed break-words overflow-hidden whitespace-pre-wrap">{selectedConfession.admin_comment}</p>
+                            
+                            {/* Loading Skeleton */}
+                            {loadingCommentsFor === selectedConfession.id && (
+                              <div className="space-y-2">
+                                {[1, 2, 3].map((idx) => (
+                                  <div key={`skeleton-${idx}`} className="bg-[#0a0a0a] rounded-lg p-3 border border-[#333] animate-pulse">
+                                    <div className="flex items-center gap-2 mb-2">
+                                      <div className="w-6 h-6 rounded-full bg-[#222]"></div>
+                                      <div className="h-3 w-24 bg-[#222] rounded"></div>
+                                    </div>
+                                    <div className="space-y-1">
+                                      <div className="h-3 w-full bg-[#222] rounded"></div>
+                                      <div className="h-3 w-3/4 bg-[#222] rounded"></div>
+                                    </div>
+                                  </div>
+                                ))}
                               </div>
                             )}
-                            {commentsByConfession[selectedConfession?.id || ''] && commentsByConfession[selectedConfession?.id || ''].length > 0 ? commentsByConfession[selectedConfession?.id || ''].map((comment, idx) => {
-                              console.log(`🔍 [Comment Render] Comment ${idx}:`, comment);
-                              
-                              const guestData = comment.guests && typeof comment.guests === 'object' ? (Array.isArray(comment.guests) ? comment.guests[0] : comment.guests) : null;
-                              console.log(`🔍 [Comment Render] Guest data for comment ${idx}:`, guestData);
-                              
-                              // Chỉ render khi đã có guest data đầy đủ
-                              if (!guestData) {
-                                console.warn(`⚠️ [Comment Render] No guest data for comment ${idx}, skipping render`);
-                                return null;
-                              }
-                              
-                              return (
-                              <div key={`${comment.id}-${idx}`} className="bg-[#0a0a0a] rounded-lg p-3 border border-[#333]">
-                                <div className="flex items-center gap-2 mb-2">
-                                  <img 
-                                    src={getAvatarUrl(guestData.avatar_url || '', guestData.name || 'Guest')} 
-                                    alt={guestData.name}
-                                    className="w-6 h-6 rounded-full object-cover border border-gray-600"
-                                  />
-                                  <span className="text-gray-300 text-xs font-bold">{guestData.name || 'Unknown'}</span>
-                                  <span className="text-gray-500 text-xs">
-                                    {new Date(comment.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
-                                  </span>
-                                </div>
-                                <p className="text-gray-200 text-sm leading-relaxed break-words overflow-hidden whitespace-pre-wrap">{comment.content}</p>
-                              </div>
-                            );
-                            }) : (
-                              !selectedConfession.admin_comment && <div className="text-gray-500 text-xs italic text-center py-2">Chưa có bình luận</div>
+                            
+                            {!loadingCommentsFor && (
+                              <>
+                                {selectedConfession.admin_comment && adminInfo && (
+                                  <div className="bg-[#0a0a0a] rounded-lg p-3 border border-[#333]">
+                                    <div className="flex items-center gap-2 mb-2">
+                                      <img 
+                                        src={getAvatarUrl(adminInfo.avatar_url || '', adminInfo.name || 'Admin')} 
+                                        alt={adminInfo.name}
+                                        className="w-6 h-6 rounded-full object-cover border border-gray-600"
+                                      />
+                                      <span className="text-gray-300 text-xs font-bold">{adminInfo.name}</span>
+                                    </div>
+                                    <p className="text-gray-200 text-sm leading-relaxed break-words overflow-hidden whitespace-pre-wrap">{selectedConfession.admin_comment}</p>
+                                  </div>
+                                )}
+                                {commentsByConfession[selectedConfession?.id || ''] && commentsByConfession[selectedConfession?.id || ''].length > 0 ? commentsByConfession[selectedConfession?.id || ''].map((comment, idx) => {
+                                  console.log(`🔍 [Comment Render] Comment ${idx}:`, comment);
+                                  
+                                  const guestData = comment.guests && typeof comment.guests === 'object' ? (Array.isArray(comment.guests) ? comment.guests[0] : comment.guests) : null;
+                                  console.log(`🔍 [Comment Render] Guest data for comment ${idx}:`, guestData);
+                                  
+                                  // Chỉ render khi đã có guest data đầy đủ
+                                  if (!guestData) {
+                                    console.warn(`⚠️ [Comment Render] No guest data for comment ${idx}, skipping render`);
+                                    return null;
+                                  }
+                                  
+                                  return (
+                                  <div key={`${comment.id}-${idx}`} className="bg-[#0a0a0a] rounded-lg p-3 border border-[#333] animate-in fade-in slide-in-from-bottom-2 duration-300">
+                                    <div className="flex items-center gap-2 mb-2">
+                                      <img 
+                                        src={getAvatarUrl(guestData.avatar_url || '', guestData.name || 'Guest')} 
+                                        alt={guestData.name}
+                                        className="w-6 h-6 rounded-full object-cover border border-gray-600"
+                                      />
+                                      <span className="text-gray-300 text-xs font-bold">{guestData.name || 'Unknown'}</span>
+                                      <span className="text-gray-500 text-xs">
+                                        {new Date(comment.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                                      </span>
+                                    </div>
+                                    <p className="text-gray-200 text-sm leading-relaxed break-words overflow-hidden whitespace-pre-wrap">{comment.content}</p>
+                                  </div>
+                                );
+                                }) : (
+                                  !selectedConfession.admin_comment && <div className="text-gray-500 text-xs italic text-center py-2">Chưa có bình luận</div>
+                                )}
+                              </>
                             )}
                           </div>
+                        </div>
+                        
+                        {/* Comment Input - Sticky at bottom of guest interactions */}
+                        <div className="sticky bottom-0 border-t border-[#222] pt-3 pb-4 flex gap-2 z-10">
+                          <input 
+                            type="text"
+                            value={commentInput}
+                            onChange={(e) => setCommentInput(e.target.value)}
+                            placeholder="Viết bình luận..."
+                            disabled={isPostingComment || loadingCommentsFor === selectedConfession.id}
+                            className="flex-1 bg-[#222] border border-[#333] rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:border-[#d4af37] outline-none disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                            onKeyPress={(e) => {
+                              if (e.key === 'Enter' && !isPostingComment && loadingCommentsFor !== selectedConfession.id) {
+                                handlePostComment(selectedConfession.id);
+                              }
+                            }}
+                          />
+                          <button 
+                            onClick={() => handlePostComment(selectedConfession.id)}
+                            disabled={isPostingComment || !commentInput.trim() || loadingCommentsFor === selectedConfession.id}
+                            className="bg-[#d4af37] text-black px-3 py-2 rounded-lg hover:bg-[#b89628] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 font-bold text-sm whitespace-nowrap"
+                          >
+                            {isPostingComment ? (
+                              <>
+                                <Loader2 size={16} className="animate-spin"/> Gửi...
+                              </>
+                            ) : (
+                              <>
+                                <Send size={16}/> Gửi
+                              </>
+                            )}
+                          </button>
                         </div>
                       </div>
                     )}
