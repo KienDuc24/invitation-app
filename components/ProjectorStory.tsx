@@ -1,6 +1,6 @@
 "use client";
 
-import { Heart, RotateCcw, Volume2, VolumeX, X } from 'lucide-react';
+import { Download, Heart, Loader2, RotateCcw, Volume2, VolumeX, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 interface ProjectorStoryProps {
@@ -9,6 +9,7 @@ interface ProjectorStoryProps {
   comments?: any[];       // Danh sách comment
   authorName?: string;    // Tên người đăng
   onClose: () => void;    // Hàm đóng
+  onProgress?: (progress: number) => void;  // Progress callback
 }
 
 interface ImageDimensions {
@@ -20,13 +21,17 @@ export default function ProjectorStory({
   content, 
   comments = [], 
   authorName = "Bạn", 
-  onClose 
+  onClose,
+  onProgress
 }: ProjectorStoryProps) {
   const [stage, setStage] = useState<'countdown' | 'intro' | 'playing' | 'end'>('countdown');
   const [count, setCount] = useState(3);
   const [isMuted, setIsMuted] = useState(false);
   const [imageDimensions, setImageDimensions] = useState<ImageDimensions>({});
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadWithAudio, setDownloadWithAudio] = useState(true);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
 
   // Parse images array
   const images = (() => {
@@ -133,6 +138,298 @@ export default function ProjectorStory({
     if (audioRef.current) {
       audioRef.current.currentTime = 0;
       if(!isMuted) audioRef.current.play();
+    }
+  };
+
+  // Download video
+  const handleDownloadVideo = async () => {
+    try {
+      setIsDownloading(true);
+      
+      const imageDurationPerFrame = 6; // mỗi ảnh hiển thị 6s
+      const totalDuration = 3 + 3 + (images.length * imageDurationPerFrame) + 1;
+      
+      // PRE-LOAD ALL IMAGES SYNCHRONOUSLY
+      const loadedImages: Map<number, HTMLImageElement> = new Map();
+      
+      for (let i = 0; i < images.length; i++) {
+        await new Promise<void>((resolve, reject) => {
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          img.onload = () => {
+            loadedImages.set(i, img);
+            resolve();
+          };
+          img.onerror = () => {
+            console.warn(`Failed to load image ${i}: ${images[i]}`);
+            resolve(); // Continue anyway
+          };
+          img.src = images[i];
+        });
+      }
+      
+      const canvas = document.createElement('canvas');
+      canvas.width = 1080;
+      canvas.height = 1920;
+      const ctx = canvas.getContext('2d');
+      
+      if (!ctx) throw new Error('Không thể tạo canvas context');
+      
+      // Helper function to apply effects - optimized
+      const applyEffects = () => {
+        // 1. Film Reel Circles (Top)
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+        ctx.lineWidth = 8;
+        ctx.beginPath();
+        ctx.arc(270, 120, 80, 0, Math.PI * 2); // Left reel
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(810, 120, 80, 0, Math.PI * 2); // Right reel
+        ctx.stroke();
+
+        // Reel spokes (Left)
+        ctx.lineWidth = 2;
+        for (let i = 0; i < 6; i++) {
+          const angle = (i / 6) * Math.PI * 2;
+          ctx.beginPath();
+          ctx.moveTo(270, 120);
+          ctx.lineTo(270 + Math.cos(angle) * 60, 120 + Math.sin(angle) * 60);
+          ctx.stroke();
+        }
+        // Reel spokes (Right)
+        for (let i = 0; i < 6; i++) {
+          const angle = (i / 6) * Math.PI * 2;
+          ctx.beginPath();
+          ctx.moveTo(810, 120);
+          ctx.lineTo(810 + Math.cos(angle) * 60, 120 + Math.sin(angle) * 60);
+          ctx.stroke();
+        }
+
+        // 2. Film Reel Circles (Bottom)
+        ctx.lineWidth = 8;
+        ctx.beginPath();
+        ctx.arc(270, 1800, 80, 0, Math.PI * 2); // Left reel
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(810, 1800, 80, 0, Math.PI * 2); // Right reel
+        ctx.stroke();
+
+        // Reel spokes (Bottom Left)
+        ctx.lineWidth = 2;
+        for (let i = 0; i < 6; i++) {
+          const angle = (i / 6) * Math.PI * 2;
+          ctx.beginPath();
+          ctx.moveTo(270, 1800);
+          ctx.lineTo(270 + Math.cos(angle) * 60, 1800 + Math.sin(angle) * 60);
+          ctx.stroke();
+        }
+        // Reel spokes (Bottom Right)
+        for (let i = 0; i < 6; i++) {
+          const angle = (i / 6) * Math.PI * 2;
+          ctx.beginPath();
+          ctx.moveTo(810, 1800);
+          ctx.lineTo(810 + Math.cos(angle) * 60, 1800 + Math.sin(angle) * 60);
+          ctx.stroke();
+        }
+
+        // 3. Film strip borders (top and bottom)
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+        ctx.fillRect(0, 0, 1080, 160); // Top border
+        ctx.fillRect(0, 1760, 1080, 160); // Bottom border
+
+        // Film sprocket holes
+        ctx.fillStyle = 'rgba(100, 100, 100, 0.5)';
+        for (let x = 0; x < 1080; x += 60) {
+          ctx.fillRect(x, 20, 20, 30); // Top holes
+          ctx.fillRect(x, 1870, 20, 30); // Bottom holes
+        }
+
+        // 4. Vignette (darkens edges)
+        const gradient = ctx.createRadialGradient(
+          540, 960, 324,
+          540, 960, 1296
+        );
+        gradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
+        gradient.addColorStop(1, 'rgba(0, 0, 0, 0.5)');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, 1080, 1920);
+
+        // 5. Noise - simplified for performance
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
+        for (let i = 0; i < 300; i++) {
+          ctx.fillRect(
+            Math.random() * 1080,
+            Math.random() * 1920,
+            Math.random() * 2,
+            Math.random() * 2
+          );
+        }
+
+        // 6. Scratches (vertical lines)
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(270, 0);
+        ctx.lineTo(270, 1920);
+        ctx.stroke();
+        
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+        ctx.beginPath();
+        ctx.moveTo(711.6, 0);
+        ctx.lineTo(711.6, 1920);
+        ctx.stroke();
+      };
+      
+      const canvasStream = canvas.captureStream(30);
+      const mimeType = 'video/webm';
+      const recorder = new MediaRecorder(canvasStream, { mimeType });
+      const chunks: Blob[] = [];
+      
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunks.push(e.data);
+      };
+      
+      recorder.onstop = async () => {
+        const videoBlob = new Blob(chunks, { type: 'video/webm' });
+        const timestamp = new Date().toISOString().split('T')[0];
+        const filename = `story-${timestamp}${downloadWithAudio ? '-with-audio' : ''}.mp4`;
+        const url = URL.createObjectURL(videoBlob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        setIsDownloading(false);
+        alert(`✅ Video "${filename}" đã được tải xuống!`);
+      };
+      
+      recorder.onerror = (e) => {
+        throw new Error(`MediaRecorder error: ${e.error}`);
+      };
+      
+      // START RECORDING
+      recorder.start();
+      
+      // Play audio
+      if (downloadWithAudio && audioRef.current?.src) {
+        audioRef.current.currentTime = 0;
+        audioRef.current.play().catch(() => {});
+      }
+      
+      // RENDER FRAMES SYNCHRONOUSLY
+      let frameCount = 0;
+      const fps = 30;
+      const totalFrames = Math.ceil(totalDuration * fps);
+      const frameInterval = 1000 / fps;
+      let lastTime = Date.now();
+      
+      const renderFrame = () => {
+        const now = Date.now();
+        const elapsed = now - lastTime;
+        
+        if (elapsed >= frameInterval) {
+          frameCount++;
+          lastTime = now;
+          
+          const timeInSeconds = frameCount / fps;
+          
+          // Clear canvas
+          ctx.fillStyle = '#000000';
+          ctx.fillRect(0, 0, 1080, 1920);
+          
+          if (timeInSeconds < 3) {
+            // COUNTDOWN: 0-3s
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 200px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            const countdownNum = Math.ceil(3 - timeInSeconds);
+            ctx.fillText(String(countdownNum), 540, 960);
+            // Draw reel circles in background for countdown too
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(270, 960, 100, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(810, 960, 100, 0, Math.PI * 2);
+            ctx.stroke();
+          } else if (timeInSeconds < 6) {
+            // INTRO: 3-6s - Play button / flash
+            const introProgress = timeInSeconds - 3; // 0-3
+            ctx.fillStyle = `rgba(255, 255, 255, ${0.3 + (introProgress / 3) * 0.7})`;
+            ctx.font = 'bold 300px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('▶', 540, 960);
+            // Draw reel circles in background
+            ctx.strokeStyle = `rgba(255, 255, 255, ${0.15 + (introProgress / 3) * 0.2})`;
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(270, 960, 100, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(810, 960, 100, 0, Math.PI * 2);
+            ctx.stroke();
+          } else if (timeInSeconds < 6 + images.length * imageDurationPerFrame) {
+            // IMAGES: 6s onwards - render in the film viewing area (160 to 1760)
+            const imageTime = timeInSeconds - 6;
+            const imageIndex = Math.min(
+              Math.floor(imageTime / imageDurationPerFrame),
+              images.length - 1
+            );
+            
+            const img = loadedImages.get(imageIndex);
+            if (img) {
+              const imgAspect = img.width / img.height;
+              const viewWidth = 1080;
+              const viewHeight = 1600; // 1920 - 160 (top) - 160 (bottom)
+              const viewAspect = viewWidth / viewHeight;
+              
+              let drawWidth = viewWidth;
+              let drawHeight = drawWidth / imgAspect;
+              let drawX = 0;
+              let drawY = 160 + (viewHeight - drawHeight) / 2;
+              
+              if (drawHeight > viewHeight) {
+                drawHeight = viewHeight;
+                drawWidth = drawHeight * imgAspect;
+                drawX = (viewWidth - drawWidth) / 2;
+                drawY = 160;
+              }
+              
+              ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
+            }
+          }
+          
+          // Apply effects every frame
+          applyEffects();
+          
+          // Stop condition
+          if (frameCount >= totalFrames) {
+            recorder.stop();
+            if (downloadWithAudio && audioRef.current) {
+              audioRef.current.pause();
+            }
+            return; // Stop render loop
+          }
+          
+          // Progress
+          onProgress?.((frameCount / totalFrames) * 100);
+        }
+        
+        requestAnimationFrame(renderFrame);
+      };
+      
+      renderFrame();
+      
+    } catch (error) {
+      console.error('Download error:', error);
+      setIsDownloading(false);
+      alert(`❌ Lỗi tải video: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
@@ -337,11 +634,43 @@ export default function ProjectorStory({
         </div>
       )}
       {stage === 'end' && (
-        <div className="relative z-50 text-center animate-in zoom-in duration-500">
+        <div className="relative z-50 text-center animate-in zoom-in duration-500 space-y-6">
             <h2 className="text-3xl font-bold text-white mb-2 uppercase tracking-widest">Hết phim</h2>
             <p className="text-gray-400 text-xs mb-8">Bạn có muốn xem lại khoảnh khắc này?</p>
             
+            {/* Audio Option */}
+            <div className="flex items-center justify-center gap-3 bg-white/10 backdrop-blur rounded-lg p-4 border border-[#d4af37]/30">
+              <input 
+                type="checkbox" 
+                id="audio-option"
+                checked={downloadWithAudio}
+                onChange={(e) => setDownloadWithAudio(e.target.checked)}
+                className="w-4 h-4 cursor-pointer"
+              />
+              <label htmlFor="audio-option" className="text-sm text-gray-300 cursor-pointer">
+                Tải video có âm thanh
+              </label>
+            </div>
+            
             <div className="flex gap-4 justify-center">
+                {/* Download Button */}
+                <button 
+                    onClick={handleDownloadVideo}
+                    disabled={isDownloading}
+                    className="flex flex-col items-center gap-2 group"
+                >
+                    <div className={`w-14 h-14 ${isDownloading ? 'bg-gray-600' : 'bg-[#d4af37] text-black'} rounded-full flex items-center justify-center ${!isDownloading && 'group-hover:scale-110'} transition-transform`}>
+                        {isDownloading ? (
+                          <Loader2 size={24} className="animate-spin" />
+                        ) : (
+                          <Download size={24} />
+                        )}
+                    </div>
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-[#d4af37]">
+                      {isDownloading ? 'Xử lý...' : 'Tải Video'}
+                    </span>
+                </button>
+
                 <button 
                     onClick={handleReplay}
                     className="flex flex-col items-center gap-2 group"
