@@ -1,4 +1,4 @@
-"use client";
+ "use client";
 
 import ChatGroup from "@/components/ChatGroup";
 import { supabase } from "@/lib/supabase";
@@ -112,12 +112,10 @@ export default function AdminPage() {
       const fetchData = async () => {
         console.log('🔄 [Admin Modal Effect] Fetching data for confession:', String(selectedConfessionDetail.id).substring(0, 8));
         
-        // Fetch comments
-        const { data: comments } = await supabase
-          .from('confession_comments')
-          .select('*, guests(id, name, avatar_url)')
-          .eq('confession_id', selectedConfessionDetail.id)
-          .order('created_at', { ascending: true });
+        // Fetch comments via API endpoint (includes guest data)
+        const response = await fetch(`/api/confessions/comments?confessionId=${selectedConfessionDetail.id}`);
+        const data = await response.json();
+        const comments = data.comments || [];
         
         console.log('💬 [Admin Modal Effect] Comments fetched:', comments?.length || 0);
         
@@ -164,6 +162,28 @@ export default function AdminPage() {
       };
 
       fetchData();
+      
+      // Setup realtime subscription for comments
+      const commentsChannel = supabase.channel(`admin:comments:${selectedConfessionDetail.id}`)
+        .on(
+          'postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'confession_comments', filter: `confession_id=eq.${selectedConfessionDetail.id}` },
+          (payload: any) => {
+            console.log('💬 [Admin Realtime] New comment inserted:', payload.new.id);
+            // Refetch comments to get complete data with guest info
+            (async () => {
+              const response = await fetch(`/api/confessions/comments?confessionId=${selectedConfessionDetail.id}`);
+              const data = await response.json();
+              setCommentsByConfession(prev => ({
+                ...prev,
+                [selectedConfessionDetail.id]: data.comments || []
+              }));
+            })();
+          }
+        )
+        .subscribe();
+      
+      return () => { supabase.removeChannel(commentsChannel); };
     }
   }, [selectedConfessionDetail?.id, adminUser]);
 
@@ -387,6 +407,32 @@ export default function AdminPage() {
     }
   };
 
+  const fetchComments = async (confessionId: string) => {
+    try {
+      console.log('💬 [Admin fetchComments] Starting fetch for confession:', confessionId);
+      
+      const response = await fetch(`/api/confessions/comments?confessionId=${confessionId}`);
+      
+      if (!response.ok) {
+        console.error('❌ [Admin fetchComments] Response NOT OK - status:', response.status);
+        return;
+      }
+      
+      const data = await response.json();
+      const comments = data.comments || [];
+      console.log('✅ [Admin fetchComments] Comments fetched:', comments?.length || 0, 'items');
+      
+      // Store comments in state
+      setCommentsByConfession(prev => ({
+        ...prev,
+        [confessionId]: comments
+      }));
+      
+    } catch (error) {
+      console.error('❌ [Admin fetchComments] Error:', error);
+    }
+  };
+
   const handleCommentConfession = async (confessionId: string, content: string) => {
     if (!content.trim()) return;
     try {
@@ -397,17 +443,8 @@ export default function AdminPage() {
       });
       if (error) throw error;
 
-      // Refresh comments
-      const { data: comments } = await supabase
-        .from('confession_comments')
-        .select('*, guests(id, name, avatar_url)')
-        .eq('confession_id', confessionId)
-        .order('created_at', { ascending: true });
-      
-      setCommentsByConfession(prev => ({
-        ...prev,
-        [confessionId]: comments || []
-      }));
+      // Refresh comments via API
+      await fetchComments(confessionId);
 
       // Update modal if it's open
       if (selectedConfessionDetail && selectedConfessionDetail.id === confessionId) {
@@ -417,6 +454,11 @@ export default function AdminPage() {
       console.error("Lỗi comment:", e);
       alert("Lỗi cập nhật!");
     }
+  };
+
+  const getAvatarUrl = (avatarUrl: string | null, name: string) => {
+    if (avatarUrl) return avatarUrl;
+    return `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(name)}&backgroundColor=d4af37,111111`;
   };
 
   const saveEventInfo = async () => {
@@ -575,9 +617,11 @@ export default function AdminPage() {
                      <div className="p-3 md:p-5 flex-1 flex flex-col">
                         <div className="flex items-center justify-between gap-2 md:gap-3 mb-3 md:mb-4">
                             <div className="flex items-center gap-2 md:gap-3 min-w-0">
-                                <div className="w-9 md:w-10 h-9 md:h-10 rounded-full bg-[#d4af37] text-black flex items-center justify-center font-bold text-xs overflow-hidden border-2 border-black shadow-lg flex-shrink-0">
-                                    {item.guests?.avatar_url ? <img src={item.guests.avatar_url} className="w-full h-full object-cover"/> : (item.guests?.name?.charAt(0) || "?")}
-                                </div>
+                                <img 
+                              src={getAvatarUrl(item.guests?.avatar_url || null, item.guests?.name || 'Guest')}
+                              alt={item.guests?.name}
+                              className="w-9 md:w-10 h-9 md:h-10 rounded-full border-2 border-black shadow-lg flex-shrink-0 object-cover"
+                            />
                                 <div className="min-w-0">
                                     <p className="font-bold text-xs md:text-sm text-[#fadd7d] truncate">{item.guests?.name || "Ẩn danh"}</p>
                                     <p className="text-[9px] md:text-[10px] text-gray-500 font-mono">{new Date(item.created_at).toLocaleDateString()}</p>
@@ -853,13 +897,11 @@ export default function AdminPage() {
 
                 {/* Thông tin người gửi */}
                 <div className="flex items-center gap-2 md:gap-3 p-2 md:p-3 bg-black/40 rounded-xl border border-[#222]">
-                  <div className="w-9 md:w-12 h-9 md:h-12 rounded-full bg-[#d4af37] text-black flex items-center justify-center font-bold text-xs md:text-sm overflow-hidden border-2 border-black flex-shrink-0">
-                    {selectedConfessionDetail.guests?.avatar_url ? (
-                      <img src={selectedConfessionDetail.guests.avatar_url} className="w-full h-full object-cover"/>
-                    ) : (
-                      selectedConfessionDetail.guests?.name?.charAt(0) || "?"
-                    )}
-                  </div>
+                  <img 
+                    src={getAvatarUrl(selectedConfessionDetail.guests?.avatar_url || null, selectedConfessionDetail.guests?.name || 'Guest')}
+                    alt={selectedConfessionDetail.guests?.name}
+                    className="w-9 md:w-12 h-9 md:h-12 rounded-full border-2 border-black flex-shrink-0 object-cover"
+                  />
                   <div className="min-w-0">
                     <p className="font-bold text-xs md:text-sm text-[#fadd7d] truncate">{selectedConfessionDetail.guests?.name || 'Ẩn danh'}</p>
                     <p className="text-[8px] md:text-xs text-gray-500">Gửi vào {new Date(selectedConfessionDetail.created_at).toLocaleTimeString('vi-VN')}</p>
@@ -918,13 +960,13 @@ export default function AdminPage() {
                     {(likesCounts[selectedConfessionDetail.id] || 0) > 0 && (
                       <div className="flex items-center gap-2 flex-wrap">
                         {(likersByConfession[selectedConfessionDetail.id] || []).slice(0, 5).map((liker: any, idx: number) => (
-                          <div key={idx} className="w-8 h-8 rounded-full bg-[#d4af37] text-black flex items-center justify-center font-bold text-xs overflow-hidden border border-[#d4af37] cursor-pointer flex-shrink-0" title={liker.name}>
-                            {liker.avatar_url ? (
-                              <img src={liker.avatar_url} className="w-full h-full object-cover" alt={liker.name}/>
-                            ) : (
-                              liker.name?.charAt(0) || "?"
-                            )}
-                          </div>
+                          <img
+                            key={idx}
+                            src={getAvatarUrl(liker.avatar_url || null, liker.name || 'Guest')}
+                            alt={liker.name}
+                            title={liker.name}
+                            className="w-8 h-8 rounded-full border border-[#d4af37] cursor-pointer flex-shrink-0 object-cover"
+                          />
                         ))}
                         {(likersByConfession[selectedConfessionDetail.id]?.length || 0) > 5 && (
                           <button
@@ -952,13 +994,11 @@ export default function AdminPage() {
                         {commentsByConfession[selectedConfessionDetail.id]?.map((comment: any, idx: number) => (
                           <div key={idx} className="p-2 md:p-3 bg-black/30 rounded-xl space-y-1">
                             <div className="flex items-center gap-2">
-                              <div className="w-6 h-6 rounded-full bg-[#d4af37] text-black flex items-center justify-center font-bold text-xs overflow-hidden border border-[#d4af37] flex-shrink-0">
-                                {comment.guests?.avatar_url ? (
-                                  <img src={comment.guests.avatar_url} className="w-full h-full object-cover" alt={comment.guests?.name}/>
-                                ) : (
-                                  comment.guests?.name?.charAt(0) || "?"
-                                )}
-                              </div>
+                              <img 
+                                src={getAvatarUrl(comment.guests?.avatar_url || null, comment.guests?.name || 'Guest')}
+                                alt={comment.guests?.name}
+                                className="w-6 h-6 rounded-full border border-[#d4af37] flex-shrink-0 object-cover"
+                              />
                               <span className="font-bold text-xs md:text-sm text-[#fadd7d] truncate">{comment.guests?.name || 'Ẩn danh'}</span>
                             </div>
                             <p className="text-gray-200 text-xs md:text-sm ml-8">{comment.content}</p>
@@ -968,16 +1008,14 @@ export default function AdminPage() {
                     </div>
                   )}
 
-                  {/* Comment Input Section */}
-                  <div className="border-t border-[#222] pt-3 md:pt-4 space-y-2 md:space-y-3">
+                  {/* Comment Input Section - Sticky at bottom */}
+                  <div className="sticky bottom-0 border-t border-[#222] pt-3 md:pt-4 pb-2 md:pb-3 space-y-2 md:space-y-3 bg-[#0a0a0a] z-10">
                     <div className="flex items-start gap-2 md:gap-3">
-                      <div className="w-7 md:w-8 h-7 md:h-8 rounded-full bg-[#d4af37] text-black flex items-center justify-center font-bold text-xs overflow-hidden border border-[#d4af37] flex-shrink-0 mt-1">
-                        {adminUser?.avatar_url ? (
-                          <img src={adminUser.avatar_url} className="w-full h-full object-cover" alt="admin"/>
-                        ) : (
-                          adminUser?.name?.charAt(0) || "A"
-                        )}
-                      </div>
+                      <img 
+                        src={getAvatarUrl(adminUser?.avatar_url || null, adminUser?.name || 'Admin')}
+                        alt="admin"
+                        className="w-7 md:w-8 h-7 md:h-8 rounded-full border border-[#d4af37] flex-shrink-0 mt-1 object-cover"
+                      />
                       <div className="flex-1 space-y-1 md:space-y-2">
                         <div className="flex items-center gap-2">
                           <span className="font-bold text-xs md:text-sm text-[#fadd7d]">{adminUser?.name || 'Admin'}</span>
@@ -997,9 +1035,9 @@ export default function AdminPage() {
                               setCommentInput(prev => ({ ...prev, [selectedConfessionDetail.id]: "" }));
                             }}
                             disabled={!commentInput[selectedConfessionDetail.id]?.trim()}
-                            className="bg-[#d4af37] text-black px-2 md:px-3 py-1.5 md:py-2 rounded-lg font-bold text-xs uppercase disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#c9a227] transition-colors active:scale-95 flex-shrink-0"
+                            className="bg-[#d4af37] text-black px-2 md:px-3 py-1.5 md:py-2 rounded-lg font-bold flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#c9a227] transition-colors active:scale-95 flex-shrink-0"
                           >
-                            G
+                            <Send size={16} />
                           </button>
                         </div>
                       </div>
@@ -1079,13 +1117,11 @@ export default function AdminPage() {
               <div className="space-y-2 p-3 md:p-4">
                 {(likersByConfession[selectedConfessionForLikers.id] || []).map((liker: any, idx: number) => (
                   <div key={idx} className="flex items-center gap-2 md:gap-3 p-2 md:p-3 bg-black/30 rounded-xl hover:bg-black/50 transition-colors">
-                    <div className="w-9 md:w-10 h-9 md:h-10 rounded-full bg-[#d4af37] text-black flex items-center justify-center font-bold text-sm overflow-hidden border-2 border-[#d4af37] flex-shrink-0">
-                      {liker.avatar_url ? (
-                        <img src={liker.avatar_url} className="w-full h-full object-cover" alt={liker.name}/>
-                      ) : (
-                        liker.name?.charAt(0) || "?"
-                      )}
-                    </div>
+                    <img 
+                      src={getAvatarUrl(liker.avatar_url || null, liker.name || 'Guest')}
+                      alt={liker.name}
+                      className="w-9 md:w-10 h-9 md:h-10 rounded-full border-2 border-[#d4af37] flex-shrink-0 object-cover"
+                    />
                     <div className="min-w-0 flex-1">
                       <p className="font-bold text-xs md:text-sm text-[#fadd7d] truncate">{liker.name || 'Ẩn danh'}</p>
                       {liker.isAdmin && (

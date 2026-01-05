@@ -2151,16 +2151,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                             <span className="text-[10px]">{getLikeCount(item.id)}</span>
                           </button>
                           
-                          {/* Admin Like Badge */}
-                          {item.likes_count > 0 && (
-                            <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-yellow-500/10 text-yellow-400">
-                              <Heart 
-                                size={10} 
-                                className="fill-yellow-400"
-                              />
-                              <span className="text-[9px]">Admin</span>
-                            </div>
-                          )}
+ 
                           
                           <div className="flex items-center gap-1 px-2 py-1 text-gray-500">
                             <MessageCircle size={12} />
