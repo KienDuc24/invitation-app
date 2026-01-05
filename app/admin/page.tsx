@@ -44,6 +44,7 @@ export default function AdminPage() {
   const [selectedGroup, setSelectedGroup] = useState<string>('');
   const [unreadGroupTags, setUnreadGroupTags] = useState<string[]>([]);
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
+  const [lastUnreadTimes, setLastUnreadTimes] = useState<Record<string, string>>({});
   const [showChatSidebar, setShowChatSidebar] = useState<boolean>(false);
   
   const [showImagePreviewModal, setShowImagePreviewModal] = useState(false);
@@ -270,6 +271,7 @@ export default function AdminPage() {
 
             const unreadMap: Record<string, number> = {};
             const unreadTags: string[] = [];
+            const unreadTimesMap: Record<string, string> = {};
 
             // Tính unread cho từng nhóm
             for (const groupMember of adminGroupMembers || []) {
@@ -283,11 +285,26 @@ export default function AdminPage() {
                 if (count > 0) {
                     unreadMap[groupMember.group_tag] = count;
                     unreadTags.push(groupMember.group_tag);
+                    
+                    // Fetch tin nhắn chưa đọc mới nhất
+                    const { data: lastMsg } = await supabase
+                        .from('messages')
+                        .select('created_at')
+                        .eq('group_tag', groupMember.group_tag)
+                        .gt('created_at', groupMember.last_viewed_at || '1970-01-01')
+                        .order('created_at', { ascending: false })
+                        .limit(1)
+                        .single();
+                    
+                    if (lastMsg?.created_at) {
+                        unreadTimesMap[groupMember.group_tag] = lastMsg.created_at;
+                    }
                 }
             }
 
             setUnreadCounts(unreadMap);
             setUnreadGroupTags(unreadTags);
+            setLastUnreadTimes(unreadTimesMap);
             console.log('💬 [Admin] Unread messages:', unreadMap);
         }
     }
@@ -528,6 +545,12 @@ export default function AdminPage() {
               [groupTag]: (prev[groupTag] || 0) + 1
             }));
           }
+          
+          // Update lastUnreadTime để sorting hoạt động
+          setLastUnreadTimes(prev => ({
+            ...prev,
+            [groupTag]: payload.new.created_at
+          }));
         }
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'confessions' }, (payload) => {
@@ -780,11 +803,24 @@ export default function AdminPage() {
                 <p className="text-gray-500 italic text-center py-20">Chưa có nhóm nào...</p>
               ) : (
                 (() => {
-                  // Sắp xếp nhóm: nhóm có tin mới lên đầu
+                  // Sắp xếp nhóm: nhóm có tin mới lên đầu, rồi sắp xếp theo thời gian tin nhắn mới nhất
                   const sorted = [...chatGroups].sort((a, b) => {
                     const aHasUnread = unreadGroupTags.includes(a.tag);
                     const bHasUnread = unreadGroupTags.includes(b.tag);
-                    return aHasUnread === bHasUnread ? 0 : aHasUnread ? -1 : 1;
+                    
+                    // Nếu chỉ một bên có tin chưa đọc, nó lên đầu
+                    if (aHasUnread !== bHasUnread) {
+                      return aHasUnread ? -1 : 1;
+                    }
+                    
+                    // Nếu cả hai đều có tin chưa đọc, sắp xếp theo thời gian tin nhắn mới nhất
+                    if (aHasUnread && bHasUnread) {
+                      const aTime = lastUnreadTimes[a.tag] ? new Date(lastUnreadTimes[a.tag]).getTime() : 0;
+                      const bTime = lastUnreadTimes[b.tag] ? new Date(lastUnreadTimes[b.tag]).getTime() : 0;
+                      return bTime - aTime; // Tin nhắn mới nhất lên đầu
+                    }
+                    
+                    return 0;
                   });
                   return sorted.map(group => {
                     const hasUnread = unreadGroupTags.includes(group.tag);

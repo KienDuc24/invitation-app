@@ -110,6 +110,19 @@ export default function GuestDashboard({ guest }: DashboardProps) {
   const storyTemplateRef = useRef<HTMLDivElement>(null);
   const [storyViewMode, setStoryViewMode] = useState<'classic' | 'film'>('film'); // Story type selector
 
+  // --- HIDE BODY SCROLLBAR WHEN MODAL OPENS ---
+  useEffect(() => {
+    if (selectedConfession) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'auto';
+    }
+    
+    return () => {
+      document.body.style.overflow = 'auto';
+    };
+  }, [selectedConfession]);
+
   // --- 1. KHỞI TẠO AUDIO CONTEXT ---
   useEffect(() => {
       const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
@@ -1998,11 +2011,6 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                                 <Camera size={14} /> 
                               </button>
                             )}
-                            {item.visibility === 'everyone' && (
-                              <button onClick={(e) => { e.stopPropagation(); handleShare(item); }} className="p-1.5 hover:bg-[#222] rounded-lg transition-colors text-green-400" title="Chia sẻ">
-                                <Share2 size={14} /> 
-                              </button>
-                            )}
                           </div>
                         </div>
                       </div>
@@ -2143,9 +2151,34 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                             <button onClick={(e) => { e.stopPropagation(); handleGenerateStory(item); }} className="p-1.5 hover:bg-[#222] rounded-lg transition-colors text-[#d4af37] disabled:opacity-50 disabled:cursor-not-allowed" title="Tạo Story" disabled={parseImageUrls(item.image_url).length === 0}>
                               <Camera size={14} /> 
                             </button>
-                            <button onClick={(e) => { e.stopPropagation(); handleShare(item); }} className="p-1.5 hover:bg-[#222] rounded-lg transition-colors text-green-400" title="Chia sẻ">
-                              <Share2 size={14} /> 
-                            </button>
+                            {item.guest_id === guest.id && (
+                              <>
+                                <button 
+                                  onClick={(e) => { 
+                                    e.stopPropagation(); 
+                                    setSelectedConfession(item);
+                                    setIsEditing(true);
+                                    setEditContent(item.content);
+                                    setConfessionVisibility(item.visibility || 'admin');
+                                    setEditFiles([]);
+                                  }} 
+                                  className="p-1.5 hover:bg-[#222] rounded-lg transition-colors text-blue-400"
+                                  title="Chỉnh sửa"
+                                >
+                                  <Edit3 size={14}/>
+                                </button>
+                                <button 
+                                  onClick={(e) => { 
+                                    e.stopPropagation(); 
+                                    handleDeleteConfession(item.id);
+                                  }}
+                                  className="p-1.5 hover:bg-[#222] rounded-lg transition-colors text-red-400"
+                                  title="Xóa"
+                                >
+                                  <Trash2 size={14}/>
+                                </button>
+                              </>
+                            )}
                           </div>
                         </div>
 
@@ -2235,79 +2268,21 @@ export default function GuestDashboard({ guest }: DashboardProps) {
 
       {/* MODAL LƯU BÚT CHI TIẾT */}
       {selectedConfession && (
-        <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
-          <div className="w-full max-w-2xl max-h-[90vh] bg-[#111] border border-[#333] rounded-3xl overflow-hidden flex flex-col shadow-2xl animate-in zoom-in-95 font-sans">
-            {/* Header */}
-            <div className="flex items-center justify-between p-4 border-b border-[#222] bg-[#0a0a0a]">
-              <div className="flex items-center gap-3">
-                {selectedConfession?.guest ? (
-                  <>
-                    <img 
-                      src={getAvatarUrl(selectedConfession.guest?.avatar_url || '', selectedConfession.guest?.name || 'Guest')} 
-                      alt={selectedConfession.guest?.name}
-                      className="w-8 h-8 rounded-full object-cover border border-gray-600"
-                    />
-                    <span className="text-sm font-bold text-gray-200">{selectedConfession.guest?.name}</span>
-                  </>
-                ) : selectedConfession?.visibility !== 'everyone' ? (
-                  <>
-                    {selectedConfession?.visibility === 'everyone' ? (
-                      <span className="text-xs bg-green-500/20 text-green-400 px-2 py-1 rounded-full font-bold">👥 Công khai</span>
-                    ) : (
-                      <span className="text-xs bg-gray-700/40 text-gray-300 px-2 py-1 rounded-full font-bold">🔒 Private</span>
-                    )}
-                  </>
-                ) : null}
-              </div>
-              <div className="flex items-center gap-2">
-                {!isEditing && selectedConfession?.guest_id === guest.id && (
-                  <>
-                    <button 
-                      onClick={() => {
-                        setIsEditing(true);
-                        setEditContent(selectedConfession.content);
-                        setConfessionVisibility(selectedConfession.visibility || 'admin');
-                        setEditFiles([]);
-                        setDeletedImageUrls([]);
-                      }}
-                      className="p-2 hover:bg-[#222] rounded-full transition-colors text-blue-400"
-                      title="Chỉnh sửa"
-                    >
-                      <Edit3 size={18}/>
-                    </button>
-                    <button 
-                      onClick={() => handleDeleteConfession(selectedConfession.id)}
-                      className="p-2 hover:bg-[#222] rounded-full transition-colors text-red-400"
-                      title="Xóa"
-                    >
-                      <Trash2 size={18}/>
-                    </button>
-                  </>
-                )}
-                <button onClick={() => {
-                  setSelectedConfession(null);
-                  setIsEditing(false);
-                  setEditFiles([]);
-                  setDeletedImageUrls([]);
-                  setCurrentImageIndex(0);
-                }} className="p-2 hover:bg-[#222] rounded-full transition-colors">
-                  <X size={20} className="text-gray-400"/>
-                </button>
-              </div>
-            </div>
+        <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-sm flex items-center justify-center p-2 md:p-4 animate-in fade-in">
+          <div className="w-full max-w-6xl max-h-[95vh] bg-[#111] border border-[#333] rounded-3xl overflow-hidden flex flex-col md:flex-row shadow-2xl animate-in zoom-in-95 font-sans">
 
             {/* Content */}
-            <div className="flex-1 overflow-y-auto flex flex-col font-sans">
+            <div className="flex-1 overflow-y-auto flex flex-col md:flex-row gap-0 pt-0">
               {isEditing ? (
-                // EDIT MODE
-                <div className="p-6 space-y-4 flex-1">
+                // EDIT MODE - Full Width
+                <div className="flex-1 p-3 space-y-3 overflow-y-auto">
                   {/* Ảnh */}
                   <div className="space-y-2">
-                    <p className="text-gray-400 text-xs uppercase font-black tracking-widest">Ảnh ({editFiles.length + parseImageUrls(selectedConfession.image_url).length})</p>
+                    <p className="text-gray-400 text-sm uppercase font-black tracking-widest">Ảnh ({editFiles.length + parseImageUrls(selectedConfession.image_url).length})</p>
                     <div className="space-y-2">
                       {editFiles.length > 0 && (
                         <div>
-                          <p className="text-gray-500 text-[10px] mb-2">Ảnh mới:</p>
+                          <p className="text-gray-500 text-xs mb-2">Ảnh mới:</p>
                           <div className="flex flex-wrap gap-2">
                             {editFiles.map((file, idx) => (
                               <div key={idx} className="relative group">
@@ -2329,7 +2304,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                       )}
                       {parseImageUrls(selectedConfession.image_url).length > 0 && (
                         <div>
-                          <p className="text-gray-500 text-[10px] mb-2">Ảnh hiện tại:</p>
+                          <p className="text-gray-500 text-xs mb-2">Ảnh hiện tại:</p>
                           <div className="flex flex-wrap gap-2">
                             {parseImageUrls(selectedConfession.image_url).map((url, idx) => (
                               <div key={idx} className="relative group">
@@ -2391,28 +2366,28 @@ export default function GuestDashboard({ guest }: DashboardProps) {
 
                   {/* Caption */}
                   <div className="space-y-2">
-                    <p className="text-gray-400 text-xs uppercase font-black tracking-widest">Nội dung</p>
+                    <p className="text-gray-400 text-sm uppercase font-black tracking-widest">Nội dung</p>
                     <textarea 
                       value={editContent} 
                       onChange={(e) => setEditContent(e.target.value)}
-                      className="w-full bg-[#0a0a0a] border border-[#333] rounded-xl p-3 text-sm min-h-[120px] text-gray-200 focus:border-[#d4af37] outline-none resize-none"
+                      className="w-full bg-[#0a0a0a] border border-[#333] rounded-xl p-3 text-base min-h-[120px] text-gray-200 focus:border-[#d4af37] outline-none resize-none"
                       placeholder="Hãy nhắn gửi điều gì đó..."
                     />
                   </div>
 
                   {/* Visibility */}
                   <div className="space-y-2">
-                    <p className="text-gray-400 text-xs uppercase font-black tracking-widest">Quyền hiển thị</p>
+                    <p className="text-gray-400 text-sm uppercase font-black tracking-widest">Quyền hiển thị</p>
                     <div className="flex gap-3">
                       <button 
                         onClick={() => setConfessionVisibility('admin')}
-                        className={`flex-1 py-2 rounded-lg font-bold text-xs uppercase transition-all ${confessionVisibility === 'admin' ? 'bg-[#d4af37] text-black' : 'bg-[#222] text-gray-300 hover:bg-[#333]'}`}
+                        className={`flex-1 py-2 rounded-lg font-bold text-sm uppercase transition-all ${confessionVisibility === 'admin' ? 'bg-[#d4af37] text-black' : 'bg-[#222] text-gray-300 hover:bg-[#333]'}`}
                       >
                         🔒 Chỉ admin
                       </button>
                       <button 
                         onClick={() => setConfessionVisibility('everyone')}
-                        className={`flex-1 py-2 rounded-lg font-bold text-xs uppercase transition-all ${confessionVisibility === 'everyone' ? 'bg-[#d4af37] text-black' : 'bg-[#222] text-gray-300 hover:bg-[#333]'}`}
+                        className={`flex-1 py-2 rounded-lg font-bold text-sm uppercase transition-all ${confessionVisibility === 'everyone' ? 'bg-[#d4af37] text-black' : 'bg-[#222] text-gray-300 hover:bg-[#333]'}`}
                       >
                         👥 Mọi người
                       </button>
@@ -2420,90 +2395,161 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                   </div>
                 </div>
               ) : (
-                // VIEW MODE
+                // VIEW MODE - Two Column Layout (65% images, 35% content)
                 <>
-                  {/* Ảnh */}
-                  {parseImageUrls(selectedConfession.image_url).length > 0 && (
-                    <div className="relative bg-black" onTouchStart={(e) => {
-                      (e.currentTarget as any).touchStartX = e.touches[0].clientX;
-                    }} onTouchEnd={(e) => {
-                      const images = parseImageUrls(selectedConfession.image_url);
-                      const touchStartX = (e.currentTarget as any).touchStartX || 0;
-                      const touchEndX = e.changedTouches[0].clientX;
-                      const diff = touchStartX - touchEndX;
-                      
-                      if (Math.abs(diff) > 50 && images.length > 1) {
-                        if (diff > 0) {
-                          // Swiped left - next image
-                          setCurrentImageIndex(prev => prev < images.length - 1 ? prev + 1 : 0);
-                        } else {
-                          // Swiped right - previous image
-                          setCurrentImageIndex(prev => prev > 0 ? prev - 1 : images.length - 1);
-                        }
-                      }
-                    }}>
-                      {(() => {
+                  {/* Left Column - Images (65%) */}
+                  <div className="w-full md:w-[65%] md:border-r border-[#222] flex flex-col bg-black/50">
+                    {parseImageUrls(selectedConfession.image_url).length > 0 ? (
+                      <div className="relative bg-black flex-1 flex items-center justify-center min-h-[300px] md:min-h-auto" onTouchStart={(e) => {
+                        (e.currentTarget as any).touchStartX = e.touches[0].clientX;
+                      }} onTouchEnd={(e) => {
                         const images = parseImageUrls(selectedConfession.image_url);
-                        return (
-                          <>
-                            <img 
-                              src={images[currentImageIndex]} 
-                              className="w-full h-auto object-contain cursor-pointer hover:opacity-90 transition-opacity"
-                              alt={`Kỷ niệm ${currentImageIndex + 1}`}
-                              onClick={() => {
-                                setPreviewImages(images);
-                                setCurrentPreviewIndex(currentImageIndex);
-                                setShowImagePreviewModal(true);
-                              }}
-                            />
-                            {images.length > 1 && (
-                              <div className="absolute bottom-4 right-4 bg-black/70 text-white px-3 py-1 rounded-full text-xs font-bold">
-                                {currentImageIndex + 1}/{images.length}
-                              </div>
-                            )}
-                            {images.length > 1 && (
-                              <div className="absolute top-1/2 -translate-y-1/2 w-full flex items-center justify-between px-2 pointer-events-none">
-                                <button 
-                                  onClick={() => setCurrentImageIndex(prev => prev > 0 ? prev - 1 : images.length - 1)}
-                                  className="bg-white/30 hover:bg-white/50 text-white p-3 rounded-full text-xs font-bold transition-colors pointer-events-auto"
-                                  title="Ảnh trước"
-                                >
-                                  ←
-                                </button>
-                                <button 
-                                  onClick={() => setCurrentImageIndex(prev => prev < images.length - 1 ? prev + 1 : 0)}
-                                  className="bg-white/30 hover:bg-white/50 text-white p-3 rounded-full text-xs font-bold transition-colors pointer-events-auto"
-                                  title="Ảnh sau"
-                                >
-                                  →
-                                </button>
-                              </div>
-                            )}
-                          </>
-                        );
-                      })()}
-                    </div>
-                  )}
+                        const touchStartX = (e.currentTarget as any).touchStartX || 0;
+                        const touchEndX = e.changedTouches[0].clientX;
+                        const diff = touchStartX - touchEndX;
+                        
+                        if (Math.abs(diff) > 50 && images.length > 1) {
+                          if (diff > 0) {
+                            setCurrentImageIndex(prev => prev < images.length - 1 ? prev + 1 : 0);
+                          } else {
+                            setCurrentImageIndex(prev => prev > 0 ? prev - 1 : images.length - 1);
+                          }
+                        }
+                      }}>
+                        {(() => {
+                          const images = parseImageUrls(selectedConfession.image_url);
+                          return (
+                            <>
+                              <img 
+                                src={images[currentImageIndex]} 
+                                className="max-w-full max-h-full object-contain cursor-pointer hover:opacity-90 transition-opacity p-4"
+                                alt={`Kỷ niệm ${currentImageIndex + 1}`}
+                                onClick={() => {
+                                  setPreviewImages(images);
+                                  setCurrentPreviewIndex(currentImageIndex);
+                                  setShowImagePreviewModal(true);
+                                }}
+                              />
+                              {images.length > 1 && (
+                                <div className="absolute bottom-4 right-4 bg-black/70 text-white px-3 py-1 rounded-full text-xs font-bold">
+                                  {currentImageIndex + 1}/{images.length}
+                                </div>
+                              )}
+                              {images.length > 1 && (
+                                <div className="absolute top-1/2 -translate-y-1/2 w-full flex items-center justify-between px-2 pointer-events-none">
+                                  <button 
+                                    onClick={() => setCurrentImageIndex(prev => prev > 0 ? prev - 1 : images.length - 1)}
+                                    className="bg-white/30 hover:bg-white/50 text-white p-3 rounded-full text-xs font-bold transition-colors pointer-events-auto"
+                                    title="Ảnh trước"
+                                  >
+                                    ←
+                                  </button>
+                                  <button 
+                                    onClick={() => setCurrentImageIndex(prev => prev < images.length - 1 ? prev + 1 : 0)}
+                                    className="bg-white/30 hover:bg-white/50 text-white p-3 rounded-full text-xs font-bold transition-colors pointer-events-auto"
+                                    title="Ảnh sau"
+                                  >
+                                    →
+                                  </button>
+                                </div>
+                              )}
+                            </>
+                          );
+                        })()}
+                      </div>
+                    ) : (
+                      <div className="flex-1 flex items-center justify-center text-gray-600 text-sm">
+                        Không có ảnh
+                      </div>
+                    )}
+                  </div>
 
-                  {/* Nội dung */}
-                  <div className="p-6 space-y-4 flex-1 overflow-y-auto flex flex-col">
-                    <p className="text-gray-100 text-base leading-relaxed">{selectedConfession.content}</p>
+                  {/* Right Column - Content & Comments (35%) */}
+                  <div className="w-full md:w-[35%] flex flex-col min-h-0">
+                    <div className="p-3 md:p-3 space-y-2.5 flex-1 overflow-y-auto flex flex-col">
+                      {/* Author Info & Actions */}
+                      <div className="flex items-center justify-between pb-3 border-b border-[#222]">
+                        <div className="flex items-center gap-2">
+                          {selectedConfession?.guest ? (
+                            <>
+                              <img 
+                                src={getAvatarUrl(selectedConfession.guest?.avatar_url || '', selectedConfession.guest?.name || 'Guest')} 
+                                alt={selectedConfession.guest?.name}
+                                className="w-9 h-9 rounded-full object-cover border border-gray-600"
+                              />
+                              <span className="text-sm font-bold text-gray-200">{selectedConfession.guest?.name}</span>
+                            </>
+                          ) : null}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {!isEditing && selectedConfession?.guest_id === guest.id && (
+                            <>
+                              <button 
+                                onClick={() => {
+                                  setIsEditing(true);
+                                  setEditContent(selectedConfession.content);
+                                  setConfessionVisibility(selectedConfession.visibility || 'admin');
+                                  setEditFiles([]);
+                                  setDeletedImageUrls([]);
+                                }}
+                                className="p-1.5 hover:bg-[#222] rounded-full transition-colors text-blue-400"
+                                title="Chỉnh sửa"
+                              >
+                                <Edit3 size={16}/>
+                              </button>
+                              <button 
+                                onClick={() => handleDeleteConfession(selectedConfession.id)}
+                                className="p-1.5 hover:bg-[#222] rounded-full transition-colors text-red-400"
+                                title="Xóa"
+                              >
+                                <Trash2 size={16}/>
+                              </button>
+                            </>
+                          )}
+                          {!isEditing && parseImageUrls(selectedConfession.image_url).length > 0 && (
+                            <button 
+                              onClick={() => handleGenerateStory(selectedConfession)}
+                              className="p-1.5 hover:bg-[#222] rounded-full transition-colors text-[#d4af37]"
+                              title="Tạo Story"
+                            >
+                              <Camera size={16}/>
+                            </button>
+                          )}
+                          <button 
+                            onClick={() => {
+                              setSelectedConfession(null);
+                              setIsEditing(false);
+                              setEditFiles([]);
+                              setDeletedImageUrls([]);
+                              setCurrentImageIndex(0);
+                            }}
+                            className="p-1.5 hover:bg-[#222] rounded-full transition-colors text-gray-400"
+                            title="Đóng"
+                          >
+                            <X size={16}/>
+                          </button>
+                        </div>
+                      </div>
 
-                    <div className="flex items-center justify-between pt-4 border-t border-[#222]">
-                      <span className="text-xs text-gray-500 font-mono">
-                        {new Date(selectedConfession.created_at).toLocaleDateString('vi-VN')} {new Date(selectedConfession.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                    </div>
+                      {/* Caption */}
+                      <div>
+                        <p className="text-gray-100 text-sm leading-relaxed">{selectedConfession.content}</p>
+                        <div className="flex items-center justify-between pt-2 mt-2">
+                          <span className="text-xs text-gray-500 font-mono">
+                            {new Date(selectedConfession.created_at).toLocaleDateString('vi-VN')} {new Date(selectedConfession.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                      </div>
 
-                    {/* Guest Interactions Section - Only for public confessions or post author */}
-                    {(selectedConfession.visibility === 'everyone' || selectedConfession.guest_id === guest.id) && (
-                      <div className="space-y-4 flex flex-col h-full">
+                      {/* Guest Interactions Section - Only for public confessions or post author */}
+                      {(selectedConfession.visibility === 'everyone' || selectedConfession.guest_id === guest.id) && (
+                        <div className="space-y-2 pt-2 border-t border-[#222]">
                         {/* Like Button */}
-                        <div className="flex items-center gap-3 flex-wrap">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <button 
                             onClick={() => handleLikeConfession(selectedConfession.id)}
                             disabled={loadingLikes.has(selectedConfession.id)}
-                            className={`flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+                            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg font-bold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
                               guestLikes.has(selectedConfession.id)
                                 ? 'bg-red-500/20 text-red-400'
                                 : 'bg-[#222] text-gray-300 hover:bg-[#333]'
@@ -2536,13 +2582,13 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                         </div>
 
                         {/* Comments Section */}
-                        <div className="space-y-3 pt-4 border-t border-[#222] flex flex-col flex-1 min-h-0">
-                          <p className="text-gray-400 text-xs uppercase font-black tracking-widest">
+                        <div className="space-y-2 pt-2 border-t border-[#222] flex flex-col flex-1 min-h-0">
+                          <p className="text-gray-400 text-[11px] uppercase font-black tracking-widest">
                             💬 Bình luận ({getCommentCount(selectedConfession?.id || '')})
                           </p>
                           
                           {/* Comments List - Scrollable */}
-                          <div className="space-y-2 flex-1 overflow-y-auto pr-2">
+                          <div className="space-y-1 flex-1 overflow-y-auto pr-1.5">
                             {(() => {
                               const confId = selectedConfession?.id || '';
                               const comments = commentsByConfession[confId] || [];
@@ -2580,12 +2626,19 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                                       <img 
                                         src={getAvatarUrl(adminInfo.avatar_url || '', adminInfo.name || 'Admin')} 
                                         alt={adminInfo.name}
-                                        className="w-6 h-6 rounded-full object-cover border border-gray-600"
+                                        className="w-8 h-8 rounded-full object-cover border border-gray-600"
                                       />
-                                      <span className="text-xs font-bold text-[#d4af37]">{adminInfo.name || 'Unknown'}</span>
-                                      <span className="text-[10px] bg-[#d4af37]/20 text-[#d4af37] px-2 py-0.5 rounded">Admin</span>
+                                      <div className="flex-1">
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-sm font-bold text-[#d4af37]">{adminInfo.name || 'Unknown'}</span>
+                                          <span className="text-[8px] bg-[#d4af37]/20 text-[#d4af37] px-1.5 py-0.5 rounded">Admin</span>
+                                        </div>
+                                        <span className="text-[10px] text-gray-500">
+                                          {new Date(selectedConfession.created_at).toLocaleString('vi-VN')}
+                                        </span>
+                                      </div>
                                     </div>
-                                    <p className="text-gray-200 text-sm leading-relaxed break-words overflow-hidden whitespace-pre-wrap">{selectedConfession.admin_comment}</p>
+                                    <p className="text-gray-200 text-base leading-relaxed break-words overflow-hidden whitespace-pre-wrap ml-10">{selectedConfession.admin_comment}</p>
                                   </div>
                                 )}
                                 
@@ -2608,18 +2661,20 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                                       <img 
                                         src={getAvatarUrl(guestData.avatar_url || '', guestData.name || 'Guest')} 
                                         alt={guestData.name}
-                                        className="w-6 h-6 rounded-full object-cover border border-gray-600"
+                                        className="w-8 h-8 rounded-full object-cover border border-gray-600"
                                       />
-                                      <span className="text-gray-300 text-xs font-bold">{guestData.name || 'Unknown'}</span>
-                                      <span className="text-gray-500 text-xs">
-                                        {new Date(comment.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
-                                      </span>
+                                      <div className="flex-1">
+                                        <span className="text-gray-300 text-sm font-bold">{guestData.name || 'Unknown'}</span>
+                                        <div className="text-[10px] text-gray-500">
+                                        {new Date(comment.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' })}
+                                        </div>
+                                      </div>
                                     </div>
-                                    <p className="text-gray-200 text-sm leading-relaxed break-words overflow-hidden whitespace-pre-wrap">{comment.content}</p>
+                                    <p className="text-gray-200 text-base leading-relaxed break-words overflow-hidden whitespace-pre-wrap ml-10">{comment.content}</p>
                                   </div>
                                 );
                                 }) : (
-                                  !selectedConfession.admin_comment && <div className="text-gray-500 text-xs italic text-center py-2">Chưa có bình luận</div>
+                                  !selectedConfession.admin_comment && <div className="text-gray-500 text-xs italic text-center py-1">Chưa có bình luận</div>
                                 )}
                               </>
                             )}
@@ -2627,14 +2682,14 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                         </div>
                         
                         {/* Comment Input - Sticky at bottom of guest interactions */}
-                        <div className="sticky bottom-0 border-t border-[#222] pt-3 pb-4 flex gap-2 z-10">
+                        <div className="sticky bottom-0 border-t border-[#222] pt-3 pb-3 flex gap-2 z-10 bg-[#111]">
                           <input 
                             type="text"
                             value={commentInput}
                             onChange={(e) => setCommentInput(e.target.value)}
-                            placeholder="Viết bình luận..."
+                            placeholder="Bình luận..."
                             disabled={isPostingComment || loadingCommentsFor === selectedConfession.id}
-                            className="flex-1 bg-[#222] border border-[#333] rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:border-[#d4af37] outline-none disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                            className="flex-1 bg-[#222] border border-[#333] rounded-lg px-2 py-1.5 text-sm text-gray-200 placeholder-gray-500 focus:border-[#d4af37] outline-none disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                             onKeyPress={(e) => {
                               if (e.key === 'Enter' && !isPostingComment && loadingCommentsFor !== selectedConfession.id) {
                                 handlePostComment(selectedConfession.id);
@@ -2644,28 +2699,29 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                           <button 
                             onClick={() => handlePostComment(selectedConfession.id)}
                             disabled={isPostingComment || !commentInput.trim() || loadingCommentsFor === selectedConfession.id}
-                            className="bg-[#d4af37] text-black px-3 py-2 rounded-lg hover:bg-[#b89628] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 font-bold text-sm whitespace-nowrap"
+                            className="bg-[#d4af37] text-black px-2 py-1.5 rounded-lg hover:bg-[#b89628] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1 font-bold text-xs whitespace-nowrap"
                           >
                             {isPostingComment ? (
                               <>
-                                <Loader2 size={16} className="animate-spin"/> Gửi...
+                                <Loader2 size={14} className="animate-spin"/>
                               </>
                             ) : (
                               <>
-                                <Send size={16}/> Gửi
+                                <Send size={14}/>
                               </>
                             )}
                           </button>
                         </div>
                       </div>
                     )}
+                    </div>
                   </div>
                 </>
               )}
             </div>
 
             {/* Footer - Actions */}
-            <div className="p-4 border-t border-[#222] bg-[#0a0a0a] space-y-2">
+            <div className=" border-t border-[#222] bg-[#0a0a0a] space-y-2">
               {isEditing ? (
                 <>
                   <button 
@@ -2692,7 +2748,6 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                 <>
                   {selectedConfession.visibility !== 'everyone' && (
                     <div className="w-full py-3 bg-gray-700/30 text-gray-400 text-center rounded-xl text-xs italic">
-                      🔒 Chỉ hiển thị với admin - Chuyển sang "Mọi người" để cùng chia sẻ
                     </div>
                   )}
                 </>
