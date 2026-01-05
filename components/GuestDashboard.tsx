@@ -2,6 +2,7 @@
 
 import InvitationCard from "@/components/3d/InvitationCard";
 import CatmiChat from "@/components/CatmiChat";
+import CatmiTutorial from "@/components/CatmiTutorial";
 import ChatGroup from "@/components/ChatGroup";
 import FilmStoryTemplate from "@/components/FilmStoryTemplate";
 import NetworkSection, { ChatGroupInfo } from "@/components/NetworkSection";
@@ -128,6 +129,18 @@ export default function GuestDashboard({ guest }: DashboardProps) {
       document.body.style.overflow = 'auto';
     };
   }, [selectedConfession]);
+
+  // --- TUTORIAL TAB CHANGE EVENT LISTENER ---
+  useEffect(() => {
+    const handleTutorialTabChange = (e: any) => {
+      if (e.detail?.tab) {
+        setActiveTab(e.detail.tab as 'wish' | 'chat' | 'card');
+      }
+    };
+    
+    window.addEventListener('tutorial-tab-change', handleTutorialTabChange);
+    return () => window.removeEventListener('tutorial-tab-change', handleTutorialTabChange);
+  }, []);
 
   // --- 1. KHỞI TẠO AUDIO CONTEXT ---
   useEffect(() => {
@@ -1553,6 +1566,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
 
   return (
     <>
+      <CatmiTutorial />
       {activeTab === 'card' ? (
         // Hiển thị thiệp khi tab là 'card' - Fullscreen wrapper
         <div 
@@ -1598,6 +1612,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
             initialAttendance={guest.attendance} 
             initialWish={guest.wish} 
             onTabChange={(tab) => setActiveTab(tab)}
+            data-tutorial-view-card="true"
           />
         </div>
       ) : (
@@ -1633,7 +1648,11 @@ export default function GuestDashboard({ guest }: DashboardProps) {
       <div className="p-6 pt-12 bg-gradient-to-b from-[#1a1a1a] to-transparent sticky top-0 z-40 backdrop-blur-sm">
         <div className="flex items-center justify-between mb-2">
            <div className="flex items-center gap-3">
-               <div className="relative w-12 h-12 rounded-full border-2 border-[#d4af37] bg-[#222] overflow-hidden group cursor-pointer" onClick={() => avatarInputRef.current?.click()}>
+               <div 
+                 data-tutorial-avatar="true"
+                 className="relative w-12 h-12 rounded-full border-2 border-[#d4af37] bg-[#222] overflow-hidden group cursor-pointer" 
+                 onClick={() => avatarInputRef.current?.click()}
+               >
                    {isUploadingAvatar ? (
                        <div className="absolute inset-0 flex items-center justify-center bg-black/50"><Loader2 className="animate-spin text-white" size={20}/></div>
                    ) : (
@@ -1663,7 +1682,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-10">
              {/* FORM GỬI LƯU BÚT */}
              {(
-             <div className="bg-[#111] border border-[#333] rounded-2xl p-5 space-y-4 shadow-xl">
+             <div className="bg-[#111] border border-[#333] rounded-2xl p-5 space-y-4 shadow-xl" data-tutorial-wish-tab="true">
                 <h2 className="text-[#fadd7d] font-bold uppercase tracking-widest text-xs flex items-center gap-2"><HeartHandshake size={16}/> Gửi lưu bút</h2>
                 {sent ? (
                     <div className="py-4 text-center animate-in zoom-in">
@@ -1759,12 +1778,14 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                     <button
                       onClick={() => setWishTab('my')}
                       className={`text-xs px-3 py-1 rounded-full font-bold uppercase transition-all ${wishTab === 'my' ? 'bg-[#d4af37] text-black' : 'bg-[#222] text-gray-300 hover:bg-[#333]'}`}
+                      data-tutorial-wish-manage="true"
                     >
                       Của bạn
                     </button>
                     <button
                       onClick={() => setWishTab('all')}
                       className={`text-xs px-3 py-1 rounded-full font-bold uppercase transition-all ${wishTab === 'all' ? 'bg-[#d4af37] text-black' : 'bg-[#222] text-gray-300 hover:bg-[#333]'}`}
+                      data-tutorial-wish-public="true"
                     >
                       Công khai ({publicConfessions.length})
                     </button>
@@ -2147,7 +2168,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
         )}
 
         {activeTab === 'chat' && (
-           <div className="animate-in fade-in slide-in-from-right-4 duration-500 pb-10">
+           <div className="animate-in fade-in slide-in-from-right-4 duration-500 pb-10" data-tutorial-chat-groups="true">
              {!activeChatTag && !previewGroup && (
                  <NetworkSection 
                      currentGuestId={guest.id} 
@@ -3146,9 +3167,9 @@ export default function GuestDashboard({ guest }: DashboardProps) {
             margin: '0 auto',
             transition: 'all 0.3s ease',
           }}>
-              <NavButton active={activeTab === 'wish'} icon={<Ticket size={20} />} label="Lưu bút" onClick={() => setActiveTab('wish')} />
-              <NavButton active={activeTab === 'chat'} icon={<Users size={20} />} label="Kết nối" onClick={() => setActiveTab('chat')} badge={unreadCount} />
-              <NavButton active={false} icon={<ImagePlus size={20} />} label="Xem thiệp" onClick={() => setActiveTab('card')} />
+              <NavButton active={activeTab === 'wish'} icon={<Ticket size={20} />} label="Lưu bút" onClick={() => setActiveTab('wish')} data-tutorial-wish-tab="true" />
+              <NavButton active={activeTab === 'chat'} icon={<Users size={20} />} label="Kết nối" onClick={() => setActiveTab('chat')} badge={unreadCount} data-tutorial-chat-tab="true" />
+              <NavButton active={false} icon={<ImagePlus size={20} />} label="Xem thiệp" onClick={() => setActiveTab('card')} data-tutorial-view-card="true" />
           </div>
         </div>
       )}
@@ -3166,10 +3187,11 @@ export default function GuestDashboard({ guest }: DashboardProps) {
   );
 }
 
-function NavButton({ active, icon, label, onClick, badge }: any) {
+function NavButton({ active, icon, label, onClick, badge, ...rest }: any) {
   return (
     <button 
-      onClick={onClick} 
+      onClick={onClick}
+      {...rest} 
       style={{
         flex: 1,
         display: 'flex',

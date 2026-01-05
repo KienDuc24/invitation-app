@@ -284,7 +284,7 @@ export default function NetworkSection({
             )}
          </h3>
          
-         <div className="grid grid-cols-1 gap-3">
+         <div className="grid grid-cols-1 gap-3" data-tutorial-chat-groups-list="true">
             {groups
               .sort((a, b) => {
                 const aUnreadNum = unreadCounts[a.tag_identifier] || a.unread_count || 0;

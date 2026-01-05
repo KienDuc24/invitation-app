@@ -479,6 +479,7 @@ export default function CatmiChat({ guestName, guestStatus, guestTags, guestInfo
           <button 
             onClick={() => setIsOpen(true)}
             className="group relative w-16 h-16 bg-white rounded-full shadow-xl flex items-center justify-center transition-transform hover:scale-110 border-2 border-orange-400 overflow-hidden"
+            data-tutorial-catmi="true"
           >
             <div className="w-full h-full relative">
               <Image src={CATMI_EXPRESSIONS[currentMood] || CATMI_EXPRESSIONS['default']} alt="Catmi" fill className="object-cover" sizes="64px" unoptimized loading="eager" />
