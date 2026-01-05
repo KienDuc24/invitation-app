@@ -425,7 +425,7 @@ export default function MobileInvitation({
     const [isPortrait, setIsPortrait] = useState(false);
     const [startIntro, setStartIntro] = useState(false);
     const [webglFailed, setWebglFailed] = useState(false);
-    const [view2D, setView2D] = useState(false); // Toggle 2D/3D view
+    const [view2D, setView2D] = useState(true); // Toggle 2D/3D view - Default to 2D
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const [isMuted, setIsMuted] = useState(false);
     const [eventInfo, setEventInfo] = useState<any>(null);
