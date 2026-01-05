@@ -304,13 +304,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
         .select('*, guests(id, name, avatar_url)')
         .in('confession_id', confessionIds);
       
-      const { data: allComments } = await supabase
-        .from('confession_comments')
-        .select('*')
-        .in('confession_id', confessionIds);
-      
       const likersByIdMap: Record<string, any[]> = {};
-      const commentCounts: Record<string, any[]> = {};
       
       data.forEach(confession => {
         const userLikers = allLikes
@@ -330,21 +324,11 @@ export default function GuestDashboard({ guest }: DashboardProps) {
         } else {
           likersByIdMap[confession.id] = userLikers;
         }
-        
-        const confComments = allComments?.filter(c => c.confession_id === confession.id) || [];
-        
-        if (confession.admin_comment) {
-          commentCounts[confession.id] = [
-            { id: 'admin-comment', content: confession.admin_comment, guest_id: 'admin', created_at: confession.created_at, guests: { id: 'admin', name: 'Admin', avatar_url: null } },
-            ...confComments
-          ];
-        } else {
-          commentCounts[confession.id] = confComments;
-        }
       });
       
       setLikersByConfession(likersByIdMap);
-      setCommentsByConfession(commentCounts);
+      // Don't fetch comments on init - only fetch when modal opens
+      setCommentsByConfession(prev => ({...prev})); // Keep existing comments
     }
   };
 
@@ -429,24 +413,13 @@ export default function GuestDashboard({ guest }: DashboardProps) {
           }
         }
         
-        // Get comments for this confession
-        const confComments = allComments?.filter(c => c.confession_id === confession.id) || [];
-        
-        if (confession.admin_comment) {
-          commentCounts[confession.id] = [
-            { id: 'admin-comment', content: confession.admin_comment, guest_id: 'admin', created_at: confession.created_at, guests: { id: 'admin', name: 'Admin', avatar_url: null } },
-            ...confComments
-          ];
-        } else {
-          commentCounts[confession.id] = confComments;
-        }
+        // Don't store comments on init - they will be fetched on demand via fetchComments()
       });
       
       console.log('📊 [fetchPublicConfessions] Final likersByIdMap:', likersByIdMap);
-      console.log('📊 [fetchPublicConfessions] Final commentCounts:', commentCounts);
       
       setLikersByConfession(likersByIdMap);
-      setCommentsByConfession(commentCounts);
+      // Don't set commentsByConfession on init - only fetch when modal opens
       console.log('✅ [fetchPublicConfessions] State updated successfully');
     }
   };
@@ -476,20 +449,13 @@ export default function GuestDashboard({ guest }: DashboardProps) {
       console.log('✅ [fetchComments] Parsed comments:', comments?.length || 0, 'items');
       console.log('✅ [fetchComments] Comments details:', comments);
       
-      // Store comments
+      // Store all comments (API already includes admin comment if exists)
       setCommentsByConfession(prev => { 
-        const updated = { ...prev, [confessionId]: comments || [] };
-        console.log('📝 [fetchComments] State updated. New comments for', confessionId, ':', comments?.length || 0);
-        console.log('📝 [fetchComments] Full state:', updated);
+        const updated = { ...prev, [confessionId]: comments };
+        console.log('📝 [fetchComments] State updated. Total comments for', confessionId, ':', comments?.length || 0);
+        console.log('📝 [fetchComments] commentsByConfession[' + confessionId + ']:', updated[confessionId]);
         return updated;
       });
-      
-      // Update comment count - include admin comment if exists
-      const confession = selectedConfession;
-      const adminCommentCount = confession?.admin_comment ? 1 : 0;
-      const totalComments = (comments?.length || 0) + adminCommentCount;
-      console.log('📊 [fetchComments] Admin comment exists:', !!confession?.admin_comment);
-      console.log('📊 [fetchComments] Total comments (user + admin):', totalComments);
       
     } catch (error) {
       console.error('❌ [fetchComments] CATCH ERROR:', error);
@@ -906,6 +872,16 @@ export default function GuestDashboard({ guest }: DashboardProps) {
     }
   }, [selectedConfession?.id]);
 
+  // Debug: Log whenever commentsByConfession updates
+  useEffect(() => {
+    if (selectedConfession?.id) {
+      const commentCount = commentsByConfession[selectedConfession.id]?.length || 0;
+      const totalFromFunction = getCommentCount(selectedConfession.id);
+      console.log('📊 [DEBUG] commentsByConfession updated for', selectedConfession.id, '- Count:', commentCount, 'getCommentCount():', totalFromFunction);
+      console.log('📊 [DEBUG] Full comments array:', commentsByConfession[selectedConfession.id]);
+    }
+  }, [commentsByConfession, selectedConfession?.id]);
+
   // --- REALTIME LẮNG NGHE PHẢN HỒI TỪ ADMIN (FEED & ADMIN LIKE) ---
   useEffect(() => {
     const channel = supabase.channel(`confessions:${guest.id}`)
@@ -1222,11 +1198,9 @@ export default function GuestDashboard({ guest }: DashboardProps) {
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'confession_comments', filter: `confession_id=eq.${selectedConfession.id}` },
         (payload: any) => {
-          setGuestComments(prev => [payload.new, ...prev]);
-          setCommentsByConfession(prev => ({
-            ...prev,
-            [selectedConfession.id]: [payload.new, ...(prev[selectedConfession.id] || [])]
-          }));
+          console.log('💬 [Realtime Modal] New comment inserted:', payload.new.id);
+          // Refetch all comments to get complete data with guest info
+          fetchComments(selectedConfession.id);
         }
       )
       .subscribe();
@@ -1488,11 +1462,12 @@ export default function GuestDashboard({ guest }: DashboardProps) {
   const getLikeCount = (confessionId: string) => 
     likersByConfession[confessionId]?.length || 0;
   
-  // Get comment count including admin comments
+  // Get comment count (include admin comment if exists)
   const getCommentCount = (confessionId: string): number => {
-    const confession = publicConfessions.find(c => c.id === confessionId) || 
-                       myConfessions.find(c => c.id === confessionId);
     const userComments = commentsByConfession[confessionId]?.length || 0;
+    const confession = publicConfessions.find(c => c.id === confessionId) || 
+                       myConfessions.find(c => c.id === confessionId) ||
+                       selectedConfession;
     const adminComment = confession?.admin_comment ? 1 : 0;
     return userComments + adminComment;
   };
@@ -2588,19 +2563,23 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                             
                             {!loadingCommentsFor && (
                               <>
+                                {/* Admin Comment - Separate */}
                                 {selectedConfession.admin_comment && adminInfo && (
-                                  <div className="bg-[#0a0a0a] rounded-lg p-3 border border-[#333]">
+                                  <div className="bg-[#1a1a1a] rounded-lg p-3 border border-[#d4af37]/30 animate-in fade-in slide-in-from-bottom-2 duration-300">
                                     <div className="flex items-center gap-2 mb-2">
                                       <img 
                                         src={getAvatarUrl(adminInfo.avatar_url || '', adminInfo.name || 'Admin')} 
                                         alt={adminInfo.name}
                                         className="w-6 h-6 rounded-full object-cover border border-gray-600"
                                       />
-                                      <span className="text-gray-300 text-xs font-bold">{adminInfo.name}</span>
+                                      <span className="text-xs font-bold text-[#d4af37]">{adminInfo.name || 'Unknown'}</span>
+                                      <span className="text-[10px] bg-[#d4af37]/20 text-[#d4af37] px-2 py-0.5 rounded">Admin</span>
                                     </div>
                                     <p className="text-gray-200 text-sm leading-relaxed break-words overflow-hidden whitespace-pre-wrap">{selectedConfession.admin_comment}</p>
                                   </div>
                                 )}
+                                
+                                {/* Regular Comments */}
                                 {commentsByConfession[selectedConfession?.id || ''] && commentsByConfession[selectedConfession?.id || ''].length > 0 ? commentsByConfession[selectedConfession?.id || ''].map((comment, idx) => {
                                   console.log(`🔍 [Comment Render] Comment ${idx}:`, comment);
                                   

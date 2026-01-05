@@ -12,6 +12,20 @@ export async function GET(req: NextRequest) {
 
     console.log('📝 [GET /comments] Fetching comments for confession:', confessionId);
 
+    // Get confession to check for admin comment
+    const { data: confession, error: confError } = await supabase
+      .from("confessions")
+      .select("*")
+      .eq("id", confessionId)
+      .single();
+
+    console.log('📝 [GET /comments] Confession data:', confession);
+    console.log('📝 [GET /comments] Admin comment value:', confession?.admin_comment);
+    
+    if (confError) {
+      console.warn('⚠️ [GET /comments] Error fetching confession:', confError);
+    }
+
     const { data: comments, error } = await supabase
       .from("confession_comments")
       .select("*")
@@ -49,7 +63,7 @@ export async function GET(req: NextRequest) {
       })
     );
 
-    console.log('📦 [GET /comments] Returning:', commentsWithGuests.length, 'comments with guest data');
+    console.log('📦 [GET /comments] Returning:', commentsWithGuests.length, 'comments');
     return NextResponse.json({ comments: commentsWithGuests || [] });
   } catch (error) {
     console.error("❌ Get comments error:", error);
