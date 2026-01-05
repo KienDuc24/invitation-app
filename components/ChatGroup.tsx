@@ -173,14 +173,32 @@ export default function ChatGroup({ currentUser, groupTag, onBack, onLeaveGroup 
     try {
       let imageUrls: string[] = [];
       if (files.length > 0) {
+        // Sanitize groupTag for use in storage path (remove invalid characters)
+        const sanitizedGroupTag = groupTag.replace(/[^a-zA-Z0-9_-]/g, '');
+        
         imageUrls = await Promise.all(files.map(async (file) => {
-          const fileExt = file.name.split('.').pop();
-          const fileName = `${groupTag}/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
-          const { error } = await supabase.storage.from('chat-media').upload(fileName, file);
-          if (!error) {
-            return supabase.storage.from('chat-media').getPublicUrl(fileName).data.publicUrl;
+          try {
+            const fileExt = file.name.split('.').pop();
+            const fileName = `${sanitizedGroupTag}/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+            
+            const { data, error } = await supabase.storage
+              .from('chat-media')
+              .upload(fileName, file, { upsert: false });
+            
+            if (error) {
+              console.error(`❌ [ChatGroup] Upload error for ${fileName}:`, error.message);
+              return "";
+            }
+            
+            const { data: publicUrl } = supabase.storage
+              .from('chat-media')
+              .getPublicUrl(fileName);
+            
+            return publicUrl.publicUrl;
+          } catch (uploadErr) {
+            console.error(`❌ [ChatGroup] Upload exception:`, uploadErr);
+            return "";
           }
-          return "";
         }));
         imageUrls = imageUrls.filter(url => url); // Loại bỏ URLs rỗng
       }
@@ -200,9 +218,13 @@ export default function ChatGroup({ currentUser, groupTag, onBack, onLeaveGroup 
           setNewMessage(""); 
           setFiles([]);
           markAsRead();
+      } else {
+        console.error(`❌ [ChatGroup] Insert message error:`, error);
+        alert('Lỗi gửi tin nhắn. Vui lòng thử lại!');
       }
     } catch (e) { 
-        console.error(e); 
+        console.error('❌ [ChatGroup] Exception:', e); 
+        alert('Lỗi: ' + (e instanceof Error ? e.message : 'Không xác định'));
     } finally { 
         setIsSending(false); 
     }

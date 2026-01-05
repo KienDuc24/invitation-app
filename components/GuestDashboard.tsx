@@ -1,11 +1,10 @@
 "use client";
 
-import MobileInvitation from "@/components/3d/InvitationCard";
+import InvitationCard from "@/components/3d/InvitationCard";
 import CatmiChat from "@/components/CatmiChat";
 import ChatGroup from "@/components/ChatGroup";
 import FilmStoryTemplate from "@/components/FilmStoryTemplate";
 import NetworkSection, { ChatGroupInfo } from "@/components/NetworkSection";
-import ProjectorStory from "@/components/ProjectorStory";
 import StoryTemplate from "@/components/StoryTemplate";
 import { supabase } from "@/lib/supabase";
 import {
@@ -20,7 +19,13 @@ import {
   HeartHandshake, ImagePlus,
   Loader2, MessageCircle, Send, Share2, Ticket, Trash2, UserPlus, Users, X
 } from "lucide-react";
+import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
+
+const ProjectorStory = dynamic(() => import("@/components/ProjectorStory"), {
+  loading: () => <div className="fixed inset-0 bg-black z-50 flex items-center justify-center"><Loader2 className="animate-spin text-[#d4af37]" size={48}/></div>,
+  ssr: false
+});
 
 // --- CONSTANTS ---
 const HOST_INFO = {
@@ -43,6 +48,7 @@ interface DashboardProps {
 
 export default function GuestDashboard({ guest }: DashboardProps) {
   const [activeTab, setActiveTab] = useState<'wish' | 'chat' | 'card'>('chat');
+  const [cardLoading, setCardLoading] = useState(true);
   const [selectedChatGroup, setSelectedChatGroup] = useState<string | null>(null); // Fullscreen chat group
   const [unreadCount, setUnreadCount] = useState(0);
   const [unreadGroupTags, setUnreadGroupTags] = useState<string[]>([]);
@@ -166,7 +172,6 @@ export default function GuestDashboard({ guest }: DashboardProps) {
             const fileName = path.split('/').slice(-3).join('/'); // Get "confessions/id/filename"
             await supabase.storage.from('invitation-media').remove([fileName]);
           } catch (err) {
-            console.warn('Could not delete image:', url, err);
           }
         }));
       }
@@ -178,7 +183,6 @@ export default function GuestDashboard({ guest }: DashboardProps) {
           const randomId = Math.random().toString(36).substr(2, 9);
           const fileName = `confessions/${selectedConfession.id}/${timestamp}-${randomId}`;
           
-          console.log('[Upload] Starting upload:', fileName);
           
           const { data: uploadData, error: uploadError } = await supabase.storage
             .from('invitation-media')
@@ -189,30 +193,24 @@ export default function GuestDashboard({ guest }: DashboardProps) {
             throw new Error(`Upload failed: ${uploadError.message}`);
           }
           
-          console.log('[Upload] Success:', uploadData);
           
           const { data: publicUrlData } = supabase.storage
             .from('invitation-media')
             .getPublicUrl(fileName);
           
-          console.log('[Upload] Public URL:', publicUrlData?.publicUrl);
           
           return publicUrlData.publicUrl;
         }));
         
-        console.log('[Upload] All uploaded URLs:', uploadedUrls);
         
         // Combine remaining old images and new images
         const existingUrls = parseImageUrls(selectedConfession.image_url).filter(
           url => !deletedImageUrls.includes(url)
         );
-        console.log('[Upload] Existing URLs:', existingUrls);
         
         const allUrls = [...existingUrls, ...uploadedUrls];
-        console.log('[Upload] All URLs combined:', allUrls);
         
         imageUrl = JSON.stringify(allUrls);
-        console.log('[Upload] Final imageUrl:', imageUrl);
       } else if (deletedImageUrls.length > 0) {
         // Only delete, no new uploads
         const remainingUrls = parseImageUrls(selectedConfession.image_url).filter(
@@ -222,7 +220,6 @@ export default function GuestDashboard({ guest }: DashboardProps) {
       }
       
       // Update confession via API route
-      console.log('[Save] Updating with imageUrl:', imageUrl);
       
       const response = await fetch('/api/confessions/update', {
         method: 'PUT',
@@ -241,7 +238,6 @@ export default function GuestDashboard({ guest }: DashboardProps) {
       }
 
       const result = await response.json();
-      console.log('[Save] API response:', result);
       
       // Cập nhật local state
       const updatedConfession = {
@@ -251,7 +247,6 @@ export default function GuestDashboard({ guest }: DashboardProps) {
         visibility: confessionVisibility
       };
       
-      console.log('[Save] Updated confession:', updatedConfession);
       
       setSelectedConfession(updatedConfession);
       setMyConfessions(myConfessions.map(c => 
@@ -347,7 +342,6 @@ export default function GuestDashboard({ guest }: DashboardProps) {
   };
 
   const fetchPublicConfessions = async () => {
-    console.log('🔄 [fetchPublicConfessions] Starting fetch');
     
     const { data } = await supabase
       .from('confessions')
@@ -358,7 +352,6 @@ export default function GuestDashboard({ guest }: DashboardProps) {
       .eq('visibility', 'everyone')
       .order('created_at', { ascending: false });
     
-    console.log('✅ [fetchPublicConfessions] Public confessions fetched:', data?.length || 0);
     
     if (data) setPublicConfessions(data);
 
@@ -368,7 +361,6 @@ export default function GuestDashboard({ guest }: DashboardProps) {
       .select('confession_id')
       .eq('guest_id', guest.id);
     
-    console.log('❤️ [fetchPublicConfessions] User likes:', likes?.length || 0, likes?.map(l => l.confession_id));
     
     if (likes) {
       const likeSet = new Set(likes.map(l => l.confession_id));
@@ -378,7 +370,6 @@ export default function GuestDashboard({ guest }: DashboardProps) {
     // Fetch like/comment data in 2 batch queries
     if (data) {
       const confessionIds = data.map(c => c.id);
-      console.log('📋 [fetchPublicConfessions] Processing', confessionIds.length, 'confessions');
       
       // Batch fetch ALL likes with guest data
       const { data: allLikes } = await supabase
@@ -386,7 +377,6 @@ export default function GuestDashboard({ guest }: DashboardProps) {
         .select('*, guests(id, name, avatar_url)')
         .in('confession_id', confessionIds);
       
-      console.log('❤️ [fetchPublicConfessions] All likes fetched:', allLikes?.length || 0);
       
       // Batch fetch ALL comments
       const { data: allComments } = await supabase
@@ -394,7 +384,6 @@ export default function GuestDashboard({ guest }: DashboardProps) {
         .select('*')
         .in('confession_id', confessionIds);
       
-      console.log('💬 [fetchPublicConfessions] All comments fetched:', allComments?.length || 0);
       
       // Build likers and comments maps
       const likersByIdMap: Record<string, any[]> = {};
@@ -406,7 +395,6 @@ export default function GuestDashboard({ guest }: DashboardProps) {
           ?.filter(l => l.confession_id === confession.id)
           .map((l: any) => l.guests) || [];
         
-        console.log(`👥 [fetchPublicConfessions] Confession ${confession.id}: ${userLikers.length} user likes, admin_like=${confession.likes_count}`);
         
         // Add admin if liked
         if (confession.likes_count > 0 && adminInfo) {
@@ -419,34 +407,26 @@ export default function GuestDashboard({ guest }: DashboardProps) {
             },
             ...userLikers
           ];
-          console.log(`✨ [fetchPublicConfessions] Added admin to confession ${confession.id}, total: ${likersByIdMap[confession.id].length}`);
         } else {
           likersByIdMap[confession.id] = userLikers;
           if (confession.likes_count > 0 && !adminInfo) {
-            console.warn(`⚠️ [fetchPublicConfessions] Admin like flag set but adminInfo not loaded for ${confession.id}`);
           }
         }
         
         // Don't store comments on init - they will be fetched on demand via fetchComments()
       });
       
-      console.log('📊 [fetchPublicConfessions] Final likersByIdMap:', likersByIdMap);
       
       setLikersByConfession(likersByIdMap);
       // Don't set commentsByConfession on init - only fetch when modal opens
-      console.log('✅ [fetchPublicConfessions] State updated successfully');
     }
   };
 
   const fetchComments = async (confessionId: string) => {
     try {
       setLoadingCommentsFor(confessionId);
-      console.log('💬 [fetchComments] Starting fetch for confession:', confessionId);
-      console.log('💬 [fetchComments] URL:', `/api/confessions/comments?confessionId=${confessionId}`);
       
       const response = await fetch(`/api/confessions/comments?confessionId=${confessionId}`);
-      console.log('💬 [fetchComments] Response status:', response.status, response.statusText);
-      console.log('💬 [fetchComments] Response headers:', response.headers);
       
       if (!response.ok) {
         console.error('❌ [fetchComments] Response NOT OK - status:', response.status);
@@ -457,17 +437,12 @@ export default function GuestDashboard({ guest }: DashboardProps) {
       }
       
       const data = await response.json();
-      console.log('✅ [fetchComments] Response data:', data);
       
       const comments = data.comments || [];
-      console.log('✅ [fetchComments] Parsed comments:', comments?.length || 0, 'items');
-      console.log('✅ [fetchComments] Comments details:', comments);
       
       // Store all comments (API already includes admin comment if exists)
       setCommentsByConfession(prev => { 
         const updated = { ...prev, [confessionId]: comments };
-        console.log('📝 [fetchComments] State updated. Total comments for', confessionId, ':', comments?.length || 0);
-        console.log('📝 [fetchComments] commentsByConfession[' + confessionId + ']:', updated[confessionId]);
         return updated;
       });
       
@@ -523,7 +498,6 @@ export default function GuestDashboard({ guest }: DashboardProps) {
       // Lấy comments của bài đăng
       const comments = commentsByConfession[confession.id] || [];
       const commentCount = comments.length + (confession.admin_comment ? 1 : 0);
-      console.log('🔍 Confession ID:', confession.id, 'Comments:', comments, 'Count:', commentCount);
 
       // Convert comments format cho ProjectorStory
       const formattedComments = comments.map((cmt: any) => {
@@ -543,7 +517,6 @@ export default function GuestDashboard({ guest }: DashboardProps) {
           text: cmt.content || ''
         };
       });
-      console.log('📝 Formatted comments:', formattedComments);
 
       // Tạo frames từ images
       const frames = images.map((imageUrl: string, idx: number) => ({
@@ -558,7 +531,6 @@ export default function GuestDashboard({ guest }: DashboardProps) {
       setSelectedConfessionForStory(confession);
       setShowProjector(true);
 
-      console.log('✅ Projector story ready with', frames.length, 'frames');
     } catch (error) {
       console.error('❌ Error creating projector story:', error);
       alert('Lỗi tạo Story. Vui lòng thử lại!');
@@ -599,7 +571,6 @@ export default function GuestDashboard({ guest }: DashboardProps) {
           text: 'Chia sẻ kỷ niệm của tôi từ thiệp mời',
         });
         
-        console.log('✅ Story shared successfully');
         setShowStoryPreview(false);
         setSelectedConfessionForStory(null);
       } else {
@@ -632,7 +603,6 @@ export default function GuestDashboard({ guest }: DashboardProps) {
     
     try {
       setLoadingLikes(prev => new Set([...prev, confessionId]));
-      console.log('❤️ [handleLikeConfession] Starting like action for:', confessionId);
       
       const response = await fetch('/api/confessions/like', {
         method: 'POST',
@@ -641,11 +611,9 @@ export default function GuestDashboard({ guest }: DashboardProps) {
       });
       const { liked } = await response.json();
       
-      console.log('📊 [handleLikeConfession] Response:', {liked, status: response.status});
       
       const newLikes = new Set(guestLikes);
       if (liked) {
-        console.log('✅ [handleLikeConfession] Added confession to guestLikes');
         newLikes.add(confessionId);
         
         // Update likersByConfession immediately - add self to likers
@@ -653,7 +621,6 @@ export default function GuestDashboard({ guest }: DashboardProps) {
           const existing = prev[confessionId] || [];
           const selfAlreadyExists = existing.some(l => l.id === guest.id);
           if (selfAlreadyExists) {
-            console.log('⚠️ [handleLikeConfession] Self already in likers, skipping add');
             return prev;
           }
           const selfLiker = {
@@ -661,21 +628,18 @@ export default function GuestDashboard({ guest }: DashboardProps) {
             name: guest.name,
             avatar_url: guest.avatar_url || null
           };
-          console.log('➕ [handleLikeConfession] Added self to likers array');
           return {
             ...prev,
             [confessionId]: [...existing, selfLiker]
           };
         });
       } else {
-        console.log('🗑️ [handleLikeConfession] Removed confession from guestLikes');
         newLikes.delete(confessionId);
         
         // Update likersByConfession immediately - remove self from likers
         setLikersByConfession(prev => {
           const existing = prev[confessionId] || [];
           const newArray = existing.filter(l => l.id !== guest.id);
-          console.log(`➖ [handleLikeConfession] Removed self from likers array, new count: ${newArray.length}`);
           return {
             ...prev,
             [confessionId]: newArray
@@ -683,7 +647,6 @@ export default function GuestDashboard({ guest }: DashboardProps) {
         });
       }
       setGuestLikes(newLikes);
-      console.log('📝 [handleLikeConfession] Updated guestLikes set, total:', newLikes.size);
     } catch (error) {
       console.error('❌ [handleLikeConfession] Error:', error);
     } finally {
@@ -697,24 +660,20 @@ export default function GuestDashboard({ guest }: DashboardProps) {
 
   const fetchLikers = async (confessionId: string) => {
     try {
-      console.log('🔄 [fetchLikers] Fetching likers for:', confessionId);
       
       const { data: likes } = await supabase
         .from('confession_likes')
         .select('*, guests(id, name, avatar_url)')
         .eq('confession_id', confessionId);
       
-      console.log('❤️ [fetchLikers] Fetched user likes:', likes?.length || 0);
       
       let likers: any[] = likes?.map((l: any) => l.guests) || [];
 
       // Add admin liker if exists
       // Look in both myConfessions and publicConfessions
       let confession = myConfessions.find(c => c.id === confessionId) || publicConfessions.find(c => c.id === confessionId);
-      console.log('🔍 [fetchLikers] Found confession:', confession?.id, 'admin_like:', confession?.likes_count);
       
       if (confession?.likes_count > 0 && adminInfo) {
-        console.log('✨ [fetchLikers] Prepending admin to likers');
         likers.unshift({
           id: adminInfo.id,
           name: adminInfo.name,
@@ -722,11 +681,9 @@ export default function GuestDashboard({ guest }: DashboardProps) {
           isAdmin: true
         });
       } else if (confession?.likes_count > 0 && !adminInfo) {
-        console.log('⚠️ [fetchLikers] Admin like flag set but adminInfo not loaded');
       }
 
       // Update source of truth array
-      console.log('📊 [fetchLikers] Final likers array:', likers.length, 'likers');
       setLikersByConfession(prev => ({
         ...prev,
         [confessionId]: likers
@@ -734,7 +691,6 @@ export default function GuestDashboard({ guest }: DashboardProps) {
       
       setSelectedConfessionForLikers(confession);
       setShowLikersModal(true);
-      console.log('✅ [fetchLikers] Likers modal opened');
     } catch (error) {
       console.error('❌ [fetchLikers] Error:', error);
     }
@@ -742,14 +698,9 @@ export default function GuestDashboard({ guest }: DashboardProps) {
 
   const handlePostComment = async (confessionId: string) => {
     if (!commentInput.trim()) {
-      console.log('⚠️ [handlePostComment] Empty comment input, returning');
       return;
     }
     
-    console.log('📝 [handlePostComment] === START POSTING COMMENT ===');
-    console.log('📝 [handlePostComment] Confession ID:', confessionId);
-    console.log('📝 [handlePostComment] Guest ID:', guest.id);
-    console.log('📝 [handlePostComment] Comment content:', commentInput.trim().substring(0, 100) + '...');
     
     setIsPostingComment(true);
     try {
@@ -758,7 +709,6 @@ export default function GuestDashboard({ guest }: DashboardProps) {
         guestId: guest.id, 
         content: commentInput 
       };
-      console.log('📝 [handlePostComment] Sending POST request with payload:', payload);
       
       const response = await fetch('/api/confessions/comments', {
         method: 'POST',
@@ -766,10 +716,8 @@ export default function GuestDashboard({ guest }: DashboardProps) {
         body: JSON.stringify(payload)
       });
       
-      console.log('📝 [handlePostComment] Response received - Status:', response.status, response.statusText);
       
       const data = await response.json();
-      console.log('📝 [handlePostComment] Response JSON:', data);
       
       if (!response.ok) {
         console.error('❌ [handlePostComment] Response NOT OK');
@@ -779,17 +727,12 @@ export default function GuestDashboard({ guest }: DashboardProps) {
         return;
       }
       
-      console.log('✅ [handlePostComment] Comment posted successfully');
-      console.log('✅ [handlePostComment] New comment:', data.comment);
       
       // Delay 500ms để đảm bảo comment đã lưu vào DB trước khi fetch
-      console.log('⏳ [handlePostComment] Waiting 500ms before fetching fresh comments...');
       setTimeout(() => {
-        console.log('🔄 [handlePostComment] NOW fetching fresh comments after post');
         fetchComments(confessionId);
       }, 500);
       setCommentInput("");
-      console.log('📝 [handlePostComment] Comment input cleared');
       
     } catch (error) {
       console.error('❌ [handlePostComment] CATCH ERROR:', error);
@@ -798,7 +741,6 @@ export default function GuestDashboard({ guest }: DashboardProps) {
       alert('Lỗi khi đăng bình luận');
     } finally {
       setIsPostingComment(false);
-      console.log('📝 [handlePostComment] === END POSTING COMMENT ===');
     }
   };
 
@@ -857,44 +799,18 @@ export default function GuestDashboard({ guest }: DashboardProps) {
 
   // --- FETCH COMMENTS WHEN MODAL OPENS ---
   useEffect(() => {
-    console.log('🔍 [useEffect] selectedConfession changed:', selectedConfession?.id);
     if (selectedConfession) {
-      console.log('🔍 [useEffect] selectedConfession details:', {
-        id: selectedConfession.id,
-        visibility: selectedConfession.visibility,
-        guestId: selectedConfession.guest_id,
-        currentGuestId: guest.id
-      });
-      
       const canView = selectedConfession.visibility === 'everyone' || selectedConfession.guest_id === guest.id;
-      console.log('🔍 [useEffect] Can view comments?', canView);
       
       if (canView) {
-        console.log('🔍 [useEffect] Calling fetchFreshConfession');
         fetchFreshConfession(selectedConfession.id);
         
-        console.log('🔍 [useEffect] Calling fetchComments');
         fetchComments(selectedConfession.id);
         
         setCommentInput("");
-        console.log('🔍 [useEffect] Comment input cleared');
-      } else {
-        console.log('⚠️ [useEffect] Cannot view - not public and not author');
       }
-    } else {
-      console.log('🔍 [useEffect] selectedConfession is null/undefined');
     }
   }, [selectedConfession?.id]);
-
-  // Debug: Log whenever commentsByConfession updates
-  useEffect(() => {
-    if (selectedConfession?.id) {
-      const commentCount = commentsByConfession[selectedConfession.id]?.length || 0;
-      const totalFromFunction = getCommentCount(selectedConfession.id);
-      console.log('📊 [DEBUG] commentsByConfession updated for', selectedConfession.id, '- Count:', commentCount, 'getCommentCount():', totalFromFunction);
-      console.log('📊 [DEBUG] Full comments array:', commentsByConfession[selectedConfession.id]);
-    }
-  }, [commentsByConfession, selectedConfession?.id]);
 
   // --- REALTIME LẮNG NGHE PHẢN HỒI TỪ ADMIN (FEED & ADMIN LIKE) ---
   useEffect(() => {
@@ -903,7 +819,6 @@ export default function GuestDashboard({ guest }: DashboardProps) {
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'confessions', filter: `guest_id=eq.${guest.id}` },
         (payload: any) => {
-          console.log('🔄 [Realtime] UPDATE my confession:', payload.new.id, {likes_count: payload.new.likes_count, admin_comment: !!payload.new.admin_comment});
           
           // Merge only updated fields, keep existing data like guest info
           setMyConfessions(prev => 
@@ -912,7 +827,6 @@ export default function GuestDashboard({ guest }: DashboardProps) {
           
           // Update admin comment
           if (payload.new.admin_comment && !payload.old?.admin_comment) {
-            console.log('💬 [Realtime] Admin comment added to', payload.new.id);
             setCommentsByConfession(prev => {
               const confessionId = payload.new.id;
               const comments = prev[confessionId] || [];
@@ -935,7 +849,6 @@ export default function GuestDashboard({ guest }: DashboardProps) {
           
           // ✅ Update admin like in likersByConfession array
           if (payload.new.likes_count !== payload.old?.likes_count) {
-            console.log('❤️ [Realtime] Admin like changed for', payload.new.id, ':', payload.old?.likes_count, '->', payload.new.likes_count);
             setLikersByConfession(prev => {
               const existingLikers = prev[payload.new.id] || [];
               const userLikersOnly = existingLikers.filter(l => !l.isAdmin);
@@ -948,14 +861,12 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                   avatar_url: adminInfo?.avatar_url || null,
                   isAdmin: true
                 }, ...userLikersOnly];
-                console.log(`✨ [Realtime] Admin liked ${payload.new.id}, new total: ${newArray.length}`);
                 return {
                   ...prev,
                   [payload.new.id]: newArray
                 };
               } else {
                 // Admin unliked - remove admin, keep all existing users
-                console.log(`❌ [Realtime] Admin unliked ${payload.new.id}, new total: ${userLikersOnly.length}`);
                 return {
                   ...prev,
                   [payload.new.id]: userLikersOnly
@@ -1058,7 +969,6 @@ export default function GuestDashboard({ guest }: DashboardProps) {
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'confession_likes' },
         async (payload: any) => {
-          console.log('➕ [Realtime Grid] User liked:', payload.new.confession_id, 'by guest:', payload.new.guest_id);
           
           // Fetch the new liker's user data
           const { data: user } = await supabase
@@ -1074,7 +984,6 @@ export default function GuestDashboard({ guest }: DashboardProps) {
               // Check if user already exists
               const userExists = existing.some(l => l.id === user.id);
               if (userExists) {
-                console.log('⚠️ [Realtime Grid] User already in likers, skipping', user.id);
                 return prev;
               }
               const updated = [...existing, user];
@@ -1083,11 +992,9 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                 [payload.new.confession_id]: updated
               };
             });
-            console.log('✨ [Realtime Grid] Updated likers for', payload.new.confession_id);
             
             // If current user liked, update guestLikes
             if (payload.new.guest_id === guest.id) {
-              console.log('❤️ [Realtime Grid] Current user liked, updating guestLikes');
               setGuestLikes(prev => {
                 const newSet = new Set(prev);
                 newSet.add(payload.new.confession_id);
@@ -1101,7 +1008,6 @@ export default function GuestDashboard({ guest }: DashboardProps) {
         'postgres_changes',
         { event: 'DELETE', schema: 'public', table: 'confession_likes' },
         async (payload: any) => {
-          console.log('➖ [Realtime Grid] DELETE event - refetching all likers');
           
           // Refetch all likers for currently displayed confessions
           const allConfessionIds = [...publicConfessions, ...myConfessions].map(c => c.id);
@@ -1113,7 +1019,6 @@ export default function GuestDashboard({ guest }: DashboardProps) {
             .select('*, guests(id, name, avatar_url)')
             .in('confession_id', allConfessionIds);
           
-          console.log('🔄 [Realtime Grid] Refetched all likes:', allLikes?.length || 0);
           
           // Rebuild likersByConfession for all confessions
           const newLikersByConfession: Record<string, any[]> = {};
@@ -1149,7 +1054,6 @@ export default function GuestDashboard({ guest }: DashboardProps) {
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'confession_comments' },
         (payload: any) => {
-          console.log('💬 [Realtime Grid] Comment added to:', payload.new.confession_id);
           
           // Update comments for the confession
           setCommentsByConfession(prev => {
@@ -1160,11 +1064,9 @@ export default function GuestDashboard({ guest }: DashboardProps) {
               [confessionId]: [payload.new, ...existing]
             };
           });
-          console.log('✨ [Realtime Grid] Updated comments for', payload.new.confession_id);
         }
       )
       .on('broadcast', { event: 'like_changed' }, (payload: any) => {
-        console.log('📢 [Broadcast] Like changed:', payload.payload);
         const { confessionId, action, likeCount } = payload.payload;
         
         // Refetch all likers for this confession
@@ -1195,130 +1097,128 @@ export default function GuestDashboard({ guest }: DashboardProps) {
             [confessionId]: finalLikers
           }));
           
-          console.log(`📢 [Broadcast] Updated likers for ${confessionId}: ${finalLikers.length}`);
         })();
       })
-      .subscribe();
+      .subscribe((status, err) => {
+        if (status === 'SUBSCRIBED') {
+        } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+          console.error('❌ Confessions subscription failed:', err);
+        }
+      });
 
     return () => { supabase.removeChannel(channel); };
-  }, [guest.id, adminInfo, publicConfessions, myConfessions]);
+  }, [guest.id]); // FIX: Only depend on guest.id to prevent memory leaks
 
   // --- REALTIME COMMENTS & LIKES ---
   useEffect(() => {
-    if (!selectedConfession || selectedConfession.visibility !== 'everyone') return;
+    if (!selectedConfession?.id || selectedConfession.visibility !== 'everyone') return;
 
-    const commentsChannel = supabase.channel(`comments:${selectedConfession.id}`)
+    let isMounted = true;
+    const confessionId = selectedConfession.id;
+
+    const commentsChannel = supabase.channel(`comments:${confessionId}`)
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'confession_comments', filter: `confession_id=eq.${selectedConfession.id}` },
+        { event: 'INSERT', schema: 'public', table: 'confession_comments', filter: `confession_id=eq.${confessionId}` },
         (payload: any) => {
-          console.log('💬 [Realtime Modal] New comment inserted:', payload.new.id);
-          // Refetch all comments to get complete data with guest info
-          fetchComments(selectedConfession.id);
+          if (!isMounted) return;
+          fetchComments(confessionId);
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (!isMounted) return;
+        if (status === 'SUBSCRIBED') {
+        } else {
+        }
+      });
 
-    const likesChannel = supabase.channel(`likes:${selectedConfession.id}`)
+    const likesChannel = supabase.channel(`likes:${confessionId}`)
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'confession_likes', filter: `confession_id=eq.${selectedConfession.id}` },
+        { event: 'INSERT', schema: 'public', table: 'confession_likes', filter: `confession_id=eq.${confessionId}` },
         async (payload: any) => {
-          console.log('➕ [Realtime Modal] User liked:', payload.new.confession_id, 'by guest:', payload.new.guest_id);
+          if (!isMounted) return;
           
-          // Fetch the new liker's user data
-          const { data: user } = await supabase
+          const { data: user, error } = await supabase
             .from('guests')
             .select('id, name, avatar_url')
             .eq('id', payload.new.guest_id)
             .single();
           
-          if (user) {
-            console.log('✨ [Realtime Modal] Added liker to modal:', user.id, user.name);
-            // Add user to likers array (avoid duplicates)
+          if (error) {
+            console.error('❌ Failed to fetch liker data:', error);
+            return;
+          }
+          
+          if (user && isMounted) {
             setLikersByConfession(prev => {
-              const existing = prev[selectedConfession.id] || [];
-              // Check if user already exists
+              const existing = prev[confessionId] || [];
               const userExists = existing.some(l => l.id === user.id);
               if (userExists) {
-                console.log('⚠️ [Realtime Modal] User already in likers, skipping', user.id);
                 return prev;
               }
               return {
                 ...prev,
-                [selectedConfession.id]: [...existing, user]
+                [confessionId]: [...existing, user]
               };
             });
             
-            // If current user liked, update guestLikes
             if (payload.new.guest_id === guest.id) {
-              console.log('❤️ [Realtime Modal] Current user liked, updating guestLikes');
               setGuestLikes(prev => {
                 const newSet = new Set(prev);
                 newSet.add(payload.new.confession_id);
                 return newSet;
               });
             }
-          } else {
-            console.log('⚠️ [Realtime Modal] Failed to fetch user data for:', payload.new.guest_id);
           }
         }
       )
       .on(
         'postgres_changes',
-        { event: 'DELETE', schema: 'public', table: 'confession_likes', filter: `confession_id=eq.${selectedConfession.id}` },
+        { event: 'DELETE', schema: 'public', table: 'confession_likes', filter: `confession_id=eq.${confessionId}` },
         async (payload: any) => {
-          // Don't process DELETE events - they have incomplete data
-          // Instead, refetch likers for current selected confession
-          console.log('➖ [Realtime Modal] DELETE event received for confession:', selectedConfession.id);
+          if (!isMounted) return;
           
-          // Refetch updated likers from DB
           const { data: likes } = await supabase
             .from('confession_likes')
             .select('*, guests(id, name, avatar_url)')
-            .eq('confession_id', selectedConfession.id);
+            .eq('confession_id', confessionId);
           
-          console.log('🔄 [Realtime Modal] Refetched likers:', likes?.length || 0);
+          if (!isMounted) return;
           
-          // Build likers array
           const userLikers = likes?.map((l: any) => l.guests) || [];
-          
           let finalLikers = userLikers;
+          
           if (selectedConfession.likes_count === 1 && adminInfo) {
-            // Admin liked - prepend admin
             finalLikers = [{
               id: adminInfo.id,
               name: adminInfo.name,
               avatar_url: adminInfo.avatar_url,
               isAdmin: true
             }, ...userLikers];
-            console.log('✨ [Realtime Modal] Admin still liked, total:', finalLikers.length);
           } else {
-            console.log(`❌ [Realtime Modal] After unlike, total likers: ${finalLikers.length}`);
           }
           
-          // Update state with refreshed data
           setLikersByConfession(prev => ({
             ...prev,
-            [selectedConfession.id]: finalLikers
+            [confessionId]: finalLikers
           }));
         }
       )
       .on(
         'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'confessions', filter: `id=eq.${selectedConfession.id}` },
+        { event: 'UPDATE', schema: 'public', table: 'confessions', filter: `id=eq.${confessionId}` },
         (payload: any) => {
-          // Handle admin like/unlike
+          if (!isMounted) return;
           if (payload.new.likes_count !== payload.old?.likes_count) {
             setLikersByConfession(prev => {
-              const existingLikers = prev[selectedConfession.id] || [];
+              const existingLikers = prev[confessionId] || [];
               const userLikersOnly = existingLikers.filter(l => !l.isAdmin);
               
               if (payload.new.likes_count === 1) {
-                // Admin liked - prepend admin, keep all users
                 return {
                   ...prev,
-                  [selectedConfession.id]: [{
+                  [confessionId]: [{
                     id: adminInfo?.id || 'admin',
                     name: adminInfo?.name || 'Admin',
                     avatar_url: adminInfo?.avatar_url || null,
@@ -1326,23 +1226,28 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                   }, ...userLikersOnly]
                 };
               } else {
-                // Admin unliked - remove admin, keep all users
                 return {
                   ...prev,
-                  [selectedConfession.id]: userLikersOnly
+                  [confessionId]: userLikersOnly
                 };
               }
             });
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (!isMounted) return;
+        if (status === 'SUBSCRIBED') {
+        } else {
+        }
+      });
 
     return () => {
+      isMounted = false;
       supabase.removeChannel(commentsChannel);
       supabase.removeChannel(likesChannel);
     };
-  }, [selectedConfession?.id]);
+  }, [selectedConfession?.id, adminInfo, guest.id]);
 
   // --- HÀM CHIA SẺ ---
   const handleShare = async (item: any) => {
@@ -1394,9 +1299,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
   // --- 3. MỞ KHÓA ÂM THANH ---
   const unlockAudio = () => {
       if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
-          audioContextRef.current.resume().then(() => {
-              console.log("🔊 Audio system unlocked!");
-          });
+          audioContextRef.current.resume();
       }
   };
 
@@ -1623,19 +1526,29 @@ export default function GuestDashboard({ guest }: DashboardProps) {
 
   // --- FULLSCREEN MODE EFFECT ---
   useEffect(() => {
+    const handleEscapeKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && activeTab === 'card') {
+        setActiveTab('chat'); // Exit card view on ESC
+      }
+    };
+
+    window.addEventListener('keydown', handleEscapeKey);
+
     if (activeTab === 'card') {
       // Enter fullscreen when opening card tab
       document.documentElement.requestFullscreen().catch(() => {
-        console.warn('Fullscreen request failed');
       });
     } else {
       // Exit fullscreen when leaving card tab
       if (document.fullscreenElement) {
         document.exitFullscreen().catch(() => {
-          console.warn('Exit fullscreen failed');
         });
       }
     }
+
+    return () => {
+      window.removeEventListener('keydown', handleEscapeKey);
+    };
   }, [activeTab]);
 
   return (
@@ -1666,7 +1579,19 @@ export default function GuestDashboard({ guest }: DashboardProps) {
               left: 0 !important;
             }
           `}</style>
-          <MobileInvitation 
+          {cardLoading && (
+            <div className="fixed inset-0 bg-gradient-to-br from-[#0a0a0a] to-[#111] flex items-center justify-center z-[100000]">
+              <div className="flex flex-col items-center gap-4">
+                <div className="relative w-16 h-16">
+                  <div className="absolute inset-0 rounded-full border-4 border-[#333]"></div>
+                  <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-[#d4af37] border-r-[#d4af37] animate-spin"></div>
+                </div>
+                <p className="text-gray-400 text-sm">Đang tải thiệp 3D...</p>
+                <p className="text-gray-500 text-xs">(Bấm ESC nếu bị treo lâu)</p>
+              </div>
+            </div>
+          )}
+          <InvitationCard 
             guestName={guest.name} 
             guestId={guest.id} 
             isConfirmed={true} 
@@ -1679,7 +1604,6 @@ export default function GuestDashboard({ guest }: DashboardProps) {
         <div 
             className="min-h-screen bg-[#0a0a0a] text-white pb-28 font-sans overflow-x-hidden relative"
             onClick={unlockAudio} 
-            onTouchStart={unlockAudio}
         >
       
       {/* NOTIFICATION POPUP */}
@@ -1690,7 +1614,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
           >
               <div className="w-10 h-10 rounded-full bg-[#222] border border-[#333] overflow-hidden flex-shrink-0">
                   {notification.avatar && notification.avatar.startsWith('http') ? (
-                      <img src={notification.avatar} className="w-full h-full object-cover" alt="avatar" />
+                      <img src={notification.avatar} className="w-full h-full object-cover" alt="avatar" loading="lazy" />
                   ) : (
                       <div className="w-full h-full flex items-center justify-center font-bold text-xs bg-[#d4af37] text-black">
                           {notification.title.substring(0,2)}
@@ -1713,7 +1637,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                    {isUploadingAvatar ? (
                        <div className="absolute inset-0 flex items-center justify-center bg-black/50"><Loader2 className="animate-spin text-white" size={20}/></div>
                    ) : (
-                       <img src={getDisplayAvatar()} alt="Avatar" className="w-full h-full object-cover" />
+                       <img src={getDisplayAvatar()} alt="Avatar" className="w-full h-full object-cover" loading="lazy" />
                    )}
                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><Camera size={16} className="text-white"/></div>
                </div>
@@ -1764,6 +1688,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                                 src={URL.createObjectURL(files[currentImageIndex])} 
                                 alt="Preview" 
                                 className="w-full h-48 object-cover cursor-pointer hover:opacity-80 transition-opacity"
+                                loading="lazy"
                                 onClick={() => {
                                   setPreviewImages(files.map(f => URL.createObjectURL(f)));
                                   setCurrentPreviewIndex(currentImageIndex);
@@ -2236,11 +2161,11 @@ export default function GuestDashboard({ guest }: DashboardProps) {
              )}
              {previewGroup && (
                  <div className="flex flex-col h-[65vh] justify-between bg-[#111] border border-[#333] rounded-2xl p-6 relative overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300">
-                     <div className="absolute top-0 left-0 w-full h-40 pointer-events-none"><div className="absolute inset-0 bg-gradient-to-b from-black/80 via-[#111] to-[#111] z-10"></div>{previewGroup.avatar_url && <img src={previewGroup.avatar_url} className="w-full h-full object-cover opacity-50 blur-sm" alt="group"/>}</div>
+                     <div className="absolute top-0 left-0 w-full h-40 pointer-events-none"><div className="absolute inset-0 bg-gradient-to-b from-black/80 via-[#111] to-[#111] z-10"></div>{previewGroup.avatar_url && <img src={previewGroup.avatar_url} className="w-full h-full object-cover opacity-50 blur-sm" alt="group" loading="lazy"/>}</div>
                      <div className="relative z-10">
                          <button onClick={() => setPreviewGroup(null)} className="absolute -top-2 -left-2 p-2.5 bg-black/40 hover:bg-black/60 rounded-full text-white backdrop-blur-md border border-white/10 z-20"><ArrowLeft size={18}/></button>
                          <div className="mt-8 text-center">
-                            <div className="w-20 h-20 bg-gradient-to-tr from-[#222] to-[#333] border border-[#d4af37]/50 rounded-2xl mx-auto flex items-center justify-center text-[#d4af37] shadow-[0_0_30px_rgba(212,175,55,0.15)] mb-4 overflow-hidden">{previewGroup.avatar_url ? <img src={previewGroup.avatar_url} className="w-full h-full object-cover" alt="avatar"/> : <Users size={36} strokeWidth={1.5} />}</div>
+                            <div className="w-20 h-20 bg-gradient-to-tr from-[#222] to-[#333] border border-[#d4af37]/50 rounded-2xl mx-auto flex items-center justify-center text-[#d4af37] shadow-[0_0_30px_rgba(212,175,55,0.15)] mb-4 overflow-hidden">{previewGroup.avatar_url ? <img src={previewGroup.avatar_url} className="w-full h-full object-cover" alt="avatar" loading="lazy"/> : <Users size={36} strokeWidth={1.5} />}</div>
                             <h2 className="text-xl font-bold text-white">{previewGroup.name}</h2>
                             <p className="text-gray-400 text-xs mt-1">{loadingMembers ? "Đang tải thành viên..." : `${Math.max(previewMembers.length, previewGroup.member_count)} thành viên tham gia`}</p>
                          </div>
@@ -2592,10 +2517,6 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                             {(() => {
                               const confId = selectedConfession?.id || '';
                               const comments = commentsByConfession[confId] || [];
-                              console.log('📋 [Comments Section] Rendering comments for confession:', confId);
-                              console.log('📋 [Comments Section] Comments in state:', comments);
-                              console.log('📋 [Comments Section] Admin comment:', selectedConfession?.admin_comment || 'none');
-                              console.log('📋 [Comments Section] Admin info:', adminInfo);
                               return null;
                             })()}
                             
@@ -2644,14 +2565,11 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                                 
                                 {/* Regular Comments */}
                                 {commentsByConfession[selectedConfession?.id || ''] && commentsByConfession[selectedConfession?.id || ''].length > 0 ? commentsByConfession[selectedConfession?.id || ''].map((comment, idx) => {
-                                  console.log(`🔍 [Comment Render] Comment ${idx}:`, comment);
                                   
                                   const guestData = comment.guests && typeof comment.guests === 'object' ? (Array.isArray(comment.guests) ? comment.guests[0] : comment.guests) : null;
-                                  console.log(`🔍 [Comment Render] Guest data for comment ${idx}:`, guestData);
                                   
                                   // Chỉ render khi đã có guest data đầy đủ
                                   if (!guestData) {
-                                    console.warn(`⚠️ [Comment Render] No guest data for comment ${idx}, skipping render`);
                                     return null;
                                   }
                                   
@@ -2670,7 +2588,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
                                         </div>
                                       </div>
                                     </div>
-                                    <p className="text-gray-200 text-base leading-relaxed break-words overflow-hidden whitespace-pre-wrap ml-10">{comment.content}</p>
+                                    <p className="text-gray-200 text-base leading-relaxed break-words whitespace-pre-wrap ml-10 word-break max-w-full">{comment.content}</p>
                                   </div>
                                 );
                                 }) : (

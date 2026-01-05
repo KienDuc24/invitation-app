@@ -806,7 +806,8 @@ export default function MobileInvitation({
                         {view2D ? (
                             <Card2DView guestName={guestName} eventInfo={eventInfo} />
                         ) : !webglFailed ? (
-                            <Canvas 
+                            <div className="fixed inset-0 w-screen h-screen">
+                              <Canvas 
                                 shadows 
                                 camera={{ position: [0, 0, 15], fov: 30 }} 
                                 gl={{ 
@@ -826,7 +827,7 @@ export default function MobileInvitation({
                                         setWebglFailed(true);
                                     }
                                 }}
-                            >
+                              >
                                 <color attach="background" args={['#050505']} />
                                 <SceneSetup />
                                 <OrbitControls enableZoom={true} minDistance={10} maxDistance={25} autoRotate autoRotateSpeed={0.5} enablePan={false} maxPolarAngle={Math.PI / 1.5} minPolarAngle={Math.PI / 3} />
@@ -835,7 +836,8 @@ export default function MobileInvitation({
                                 {!isSafariIOS() && (
                                     <EffectComposer enableNormalPass={false}><Bloom luminanceThreshold={1.2} mipmapBlur intensity={0.4} radius={0.6} /><Noise opacity={0.015} /><Vignette offset={0.3} darkness={0.6} /></EffectComposer>
                                 )}
-                            </Canvas>
+                              </Canvas>
+                            </div>
                         ) : (
                             // WebGL FAILED FALLBACK - 2D Card View
                             <Card2DView guestName={guestName} eventInfo={eventInfo} />
