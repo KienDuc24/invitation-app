@@ -754,7 +754,7 @@ export default function MobileInvitation({
 
                         </div>
                     </div>
-                ) : isPortrait ? (
+                ) : !view2D && isPortrait ? (
                     <RotatePrompt onClose={handleCloseCard} />
                 ) : (
                     <>
