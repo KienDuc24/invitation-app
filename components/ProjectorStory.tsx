@@ -382,26 +382,44 @@ export default function ProjectorStory({
               images.length - 1
             );
             
+            // Calculate scroll animation: each image scrolls up during its display time
+            const imageDisplayTime = imageTime % imageDurationPerFrame; // 0 to 6
+            const scrollProgress = imageDisplayTime / imageDurationPerFrame; // 0 to 1
+            
             const img = loadedImages.get(imageIndex);
             if (img) {
               const imgAspect = img.width / img.height;
               const viewWidth = 1080;
               const viewHeight = 1600; // 1920 - 160 (top) - 160 (bottom)
-              const viewAspect = viewWidth / viewHeight;
               
               let drawWidth = viewWidth;
               let drawHeight = drawWidth / imgAspect;
               let drawX = 0;
-              let drawY = 160 + (viewHeight - drawHeight) / 2;
+              let centerY = 160 + (viewHeight - drawHeight) / 2;
               
               if (drawHeight > viewHeight) {
                 drawHeight = viewHeight;
                 drawWidth = drawHeight * imgAspect;
                 drawX = (viewWidth - drawWidth) / 2;
-                drawY = 160;
+                centerY = 160;
               }
               
-              ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
+              // SCROLL ANIMATION: Image starts below, scrolls up and disappears at top
+              // Start position: below canvas
+              // End position: above canvas (scrolled out)
+              const startY = 160 + viewHeight; // Start below visible area
+              const endY = 160 - drawHeight; // End above visible area
+              const animatedY = startY + (endY - startY) * scrollProgress;
+              
+              // Draw with clipping to keep within film borders
+              ctx.save();
+              ctx.beginPath();
+              ctx.rect(0, 160, 1080, 1600); // Clip to film viewing area
+              ctx.clip();
+              
+              ctx.drawImage(img, drawX, animatedY, drawWidth, drawHeight);
+              
+              ctx.restore();
             }
           }
           
