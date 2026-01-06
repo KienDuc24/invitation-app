@@ -612,7 +612,7 @@ export default function ProjectorStory({
                   <div className="relative w-full h-screen flex flex-col items-center justify-center text-center">
                       <p className="text-[10px] text-gray-500 uppercase tracking-[0.3em] mb-2">Directed by</p>
                       <h1 className="text-2xl font-black text-white uppercase tracking-widest mb-1">Đức Kiên</h1>
-                      <p className="text-[#d4af37] font-serif italic text-xs">Graduation Ceremony 2025</p>
+                      <p className="text-[#d4af37] font-serif italic text-xs">Graduation Ceremony 2026</p>
                       <div className="mt-4 animate-bounce">
                           <Heart className="w-5 h-5 text-red-600 fill-red-600 mx-auto" />
                       </div>

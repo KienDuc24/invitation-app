@@ -318,7 +318,7 @@ function HeroCard({ guestName, startIntro, eventInfo }: { guestName: string, sta
 
                     <group position={[0, 0.1, 0.051]}>
                         {/* Tiêu đề sự kiện */}
-                        <Text position={[0, 1.5, 0]} fontSize={0.18} color="#ffd700" letterSpacing={0.18} font={FONT_URL} anchorX="center" anchorY="middle">LỄ TỐT NGHIỆP 2025</Text>
+                        <Text position={[0, 1.5, 0]} fontSize={0.18} color="#ffd700" letterSpacing={0.18} font={FONT_URL} anchorX="center" anchorY="middle">LỄ TỐT NGHIỆP 2026</Text>
                         
                         <Text position={[0, 1.0, 0]} fontSize={0.11} color="#999999" letterSpacing={0.25} font={FONT_URL} anchorX="center" anchorY="middle">TRÂN TRỌNG KÍNH MỜI</Text>
 
@@ -372,7 +372,7 @@ const Card2DView = ({ guestName, eventInfo }: { guestName: string, eventInfo: an
                             <p className="text-[#999999] text-xs uppercase tracking-widest">Tới tham dự sự kiện</p>
                             <h2 className="text-2xl font-bold text-white uppercase tracking-[0.1em]">Lễ Tốt Nghiệp</h2>
                             <p className="text-[#d4af37] text-lg italic font-semibold">Của Bùi Đức Kiên</p>
-                            <p className="text-4xl font-black text-[#ffd700] drop-shadow-[0_0_20px_rgba(212,175,55,0.3)]">2025</p>
+                            <p className="text-4xl font-black text-[#ffd700] drop-shadow-[0_0_20px_rgba(212,175,55,0.3)]">2026</p>
                         </div>
                         
                         {/* Event Info */}
@@ -668,7 +668,7 @@ export default function MobileInvitation({
                                         <p className="text-[#999999] text-[9px] tracking-[0.25em] uppercase">Tới tham dự sự kiện</p>
                                         <h2 className="text-base font-bold text-white uppercase tracking-[0.15em]">Lễ Tốt Nghiệp</h2>
                                         <p className="text-[#d4af37] text-sm font-medium italic">Của Bùi Đức Kiên</p>
-                                        <p className="text-3xl font-black text-[#ffd700] drop-shadow-[0_0_15px_rgba(212,175,55,0.4)]">2025</p>
+                                        <p className="text-3xl font-black text-[#ffd700] drop-shadow-[0_0_15px_rgba(212,175,55,0.4)]">2026</p>
                                     </div>
                                     <div className="pt-3">
                                         <button

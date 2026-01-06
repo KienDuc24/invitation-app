@@ -15,7 +15,7 @@ export default function Home() {
         <Sparkles className="w-12 h-12 text-[#d4af37] mx-auto mb-6 animate-pulse" />
         
         <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-b from-[#fadd7d] to-[#aa8e26] mb-4 uppercase tracking-widest">
-          Lễ Tốt Nghiệp 2025
+          Lễ Tốt Nghiệp 2026
         </h1>
         
         <div className="h-[1px] w-20 bg-[#d4af37]/30 mx-auto my-6" />

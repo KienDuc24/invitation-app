@@ -70,7 +70,7 @@ export default function AdminPage() {
   const [adminUser, setAdminUser] = useState<any>(null);
   const [selectedConfessionDetail, setSelectedConfessionDetail] = useState<any>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
-  const SECRET_PIN = "2025"; 
+  const SECRET_PIN = "2026"; 
 
   // --- 1. KHỞI TẠO AUDIO ---
   useEffect(() => {

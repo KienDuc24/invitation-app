@@ -350,7 +350,7 @@ const ConceptA = forwardRef<HTMLDivElement, StoryTemplateProps>(
               margin: '0',
             }}
           >
-            Lễ Tốt Nghiệp Đức Kiên 2025
+            Lễ Tốt Nghiệp Đức Kiên 2026
           </p>
         </div>
 
@@ -672,7 +672,7 @@ const ConceptB = forwardRef<HTMLDivElement, StoryTemplateProps>(
                 letterSpacing: '1px',
               }}
             >
-              Đức Kiên Graduation 2025
+              Đức Kiên Graduation 2026
             </p>
           </div>
         </div>
@@ -997,7 +997,7 @@ const ConceptC = forwardRef<HTMLDivElement, StoryTemplateProps>(
               margin: '0',
             }}
           >
-            ✨ Lễ Tốt Nghiệp Đức Kiên 2025 ✨
+            ✨ Lễ Tốt Nghiệp Đức Kiên 2026 ✨
           </p>
         </div>
       </div>

@@ -15,7 +15,7 @@ interface GuestPageProps {
 export async function generateMetadata({ params }: GuestPageProps): Promise<Metadata> {
   const { guestId } = await params;
   const guest = await getGuestById(guestId);
-  if (!guest) return { title: "Thiệp mời Lễ Tốt Nghiệp 2025" };
+  if (!guest) return { title: "Thiệp mời Lễ Tốt Nghiệp 2026" };
   return { title: `Gửi ${guest.name} | Thiệp Mời` };
 }
 
