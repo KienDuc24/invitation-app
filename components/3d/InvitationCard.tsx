@@ -4,7 +4,7 @@ import { supabase } from "@/lib/supabase";
 import { ContactShadows, Environment, Float, OrbitControls, RoundedBox, Sparkles, Stars, Text, useGLTF, useVideoTexture } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Bloom, EffectComposer, Noise, Vignette } from "@react-three/postprocessing";
-import { CheckCircle, Frown, Heart, ImagePlus, Loader2, MessageCircle, RefreshCw, RotateCcw, Send, Smartphone, Sparkles as SparklesIcon, Ticket, X } from "lucide-react";
+import { CheckCircle, Frown, Heart, Loader2, RefreshCw, RotateCcw, Send, Smartphone, Sparkles as SparklesIcon, X } from "lucide-react";
 import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import * as THREE from "three";
@@ -454,14 +454,13 @@ export default function MobileInvitation({
         return () => window.removeEventListener('resize', checkOrientation);
     }, []);
 
+    // Initialize RSVP state when component mounts with initial data
     useEffect(() => {
-        if (isConfirmed) { setIsOpen(true); }
-        // Nếu đã vote nhưng không phải "Có tham dự", hiển thị modal xác nhận
-        if (initialAttendance && initialAttendance !== "Có tham dự") {
+        if (initialAttendance) {
             setRsvpState('success');
             setConfirmedAttendance(initialAttendance);
         }
-    }, [isConfirmed, initialAttendance]);
+    }, []);
 
     useEffect(() => {
         if (isOpen && !isPortrait) {
@@ -472,17 +471,6 @@ export default function MobileInvitation({
             setStartIntro(false);
         }
     }, [isOpen, isPortrait]);
-
-    // Handle ESC key to close card
-    useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'Escape' && isOpen) {
-                handleCloseCard();
-            }
-        };
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [isOpen]);
 
     useEffect(() => {
         if (!audioRef.current) {
@@ -561,6 +549,17 @@ export default function MobileInvitation({
         }
     };
 
+    // Handle ESC key to close card
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape' && isOpen) {
+                handleCloseCard();
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [isOpen]);
+
     const handleSubmit = async () => {
         if (!guestId) return;
         setLoading(true);
@@ -613,7 +612,7 @@ export default function MobileInvitation({
             <ErrorBoundary>
                 <Confetti show={showConfetti} />
                 <div 
-                    className="fixed inset-0 z-[99999] bg-[#050505] transition-opacity duration-300"
+                    className="fixed inset-0 z-[1000] bg-[#050505] transition-opacity duration-300"
                     style={{
                         fontFamily: 'Playfair Display, Georgia, serif',
                         opacity: isClosing ? 0 : 1
@@ -841,17 +840,6 @@ export default function MobileInvitation({
                         ) : (
                             // WebGL FAILED FALLBACK - 2D Card View
                             <Card2DView guestName={guestName} eventInfo={eventInfo} />
-                        )}
-
-                        {/* NAV BUTTON - HIDDEN IN FULLSCREEN MODE */}
-                        {onTabChange && (
-                            <div className="fixed bottom-6 left-6 right-6 z-[999999] hidden">
-                                <div className="bg-[#111]/90 backdrop-blur-xl border border-[#333] rounded-2xl p-2 flex justify-between shadow-[0_10px_40px_rgba(0,0,0,0.5)] max-w-md mx-auto">
-                                    <NavButton icon={<Ticket size={20} />} label="Lưu bút" onClick={() => onTabChange('wish')} active={false} />
-                                    <NavButton icon={<MessageCircle size={20} />} label="Trò chuyện" onClick={() => onTabChange('chat')} active={false} />
-                                    <NavButton icon={<ImagePlus size={20} />} label="Xem thiệp" onClick={() => {}} active={true} />
-                                </div>
-                            </div>
                         )}
                     </>
                 )}

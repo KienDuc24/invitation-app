@@ -1570,7 +1570,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
       {activeTab === 'card' ? (
         // Hiển thị thiệp khi tab là 'card' - Fullscreen wrapper
         <div 
-          className="fixed z-[99999] bg-[#050505] overflow-hidden"
+          className="fixed z-[1000] bg-[#050505] overflow-hidden"
           style={{
             width: '100vw',
             height: '100vh',
@@ -1608,7 +1608,7 @@ export default function GuestDashboard({ guest }: DashboardProps) {
           <InvitationCard 
             guestName={guest.name} 
             guestId={guest.id} 
-            isConfirmed={true} 
+            isConfirmed={false} 
             initialAttendance={guest.attendance} 
             initialWish={guest.wish} 
             onTabChange={(tab) => setActiveTab(tab)}
@@ -3144,35 +3144,33 @@ export default function GuestDashboard({ guest }: DashboardProps) {
         />
       )}
 
-      {/* BOTTOM NAV - Ẩn khi ở tab 'card' */}
-      {activeTab !== 'card' && (
+      {/* BOTTOM NAV - Selalu ditampilkan, posisi berbeda saat viewing card */}
+      <div style={{
+        position: 'fixed',
+        bottom: activeTab === 'card' ? '24px' : '24px',
+        left: '24px',
+        right: '24px',
+        zIndex: activeTab === 'card' ? 99998 : 50,
+        animation: 'slideInFromBottom 0.3s ease-out',
+      }}>
         <div style={{
-          position: 'fixed',
-          bottom: '24px',
-          left: '24px',
-          right: '24px',
-          zIndex: 50,
-          animation: 'slideInFromBottom 0.3s ease-out',
+          backgroundColor: 'rgba(17, 17, 17, 0.9)',
+          backdropFilter: 'blur(24px)',
+          border: activeTab === 'card' ? '1px solid #d4af37' : '1px solid #333',
+          borderRadius: '18px',
+          padding: '8px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          boxShadow: '0 20px 25px rgba(0, 0, 0, 0.5)',
+          maxWidth: '448px',
+          margin: '0 auto',
+          transition: 'all 0.3s ease',
         }}>
-          <div style={{
-            backgroundColor: 'rgba(17, 17, 17, 0.9)',
-            backdropFilter: 'blur(24px)',
-            border: '1px solid #333',
-            borderRadius: '18px',
-            padding: '8px',
-            display: 'flex',
-            justifyContent: 'space-between',
-            boxShadow: '0 20px 25px rgba(0, 0, 0, 0.5)',
-            maxWidth: '448px',
-            margin: '0 auto',
-            transition: 'all 0.3s ease',
-          }}>
-              <NavButton active={activeTab === 'wish'} icon={<Ticket size={20} />} label="Lưu bút" onClick={() => setActiveTab('wish')} data-tutorial-wish-tab="true" />
-              <NavButton active={activeTab === 'chat'} icon={<Users size={20} />} label="Kết nối" onClick={() => setActiveTab('chat')} badge={unreadCount} data-tutorial-chat-tab="true" />
-              <NavButton active={false} icon={<ImagePlus size={20} />} label="Xem thiệp" onClick={() => setActiveTab('card')} data-tutorial-view-card="true" />
-          </div>
+            <NavButton active={activeTab === 'wish'} icon={<Ticket size={20} />} label="Lưu bút" onClick={() => setActiveTab('wish')} data-tutorial-wish-tab="true" />
+            <NavButton active={activeTab === 'chat'} icon={<Users size={20} />} label="Kết nối" onClick={() => setActiveTab('chat')} badge={unreadCount} data-tutorial-chat-tab="true" />
+            <NavButton active={activeTab === 'card'} icon={<ImagePlus size={20} />} label="Xem thiệp" onClick={() => setActiveTab('card')} data-tutorial-view-card="true" />
         </div>
-      )}
+      </div>
 
       {/* Catmi Chat - Ẩn khi đang xem nhóm chat */}
       <CatmiChat 

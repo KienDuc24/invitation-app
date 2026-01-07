@@ -73,7 +73,24 @@ export default function ProjectorStory({
         img.src = imgUrl;
       }
     });
-  }, [images]);
+  }, [images, imageDimensions]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      // Stop audio playback
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+      }
+      // Reset state
+      setStage('countdown');
+      setCount(3);
+      setIsDownloading(false);
+      setDownloadWithAudio(true);
+      setIsMuted(false);
+    };
+  }, []);
 
   // Determine if image is landscape (width > height)
   const isLandscape = (imgUrl: string) => {
@@ -83,41 +100,39 @@ export default function ProjectorStory({
 
   // --- LOGIC CHUYỂN CẢNH ---
   useEffect(() => {
+    let timer: ReturnType<typeof setInterval | typeof setTimeout>;
+    
     // 1. Đếm ngược 3-2-1
     if (stage === 'countdown') {
-      const timer = setInterval(() => {
+      timer = setInterval(() => {
         setCount((prev) => {
           if (prev === 1) {
-            clearInterval(timer);
             setStage('intro');
             return 1;
           }
           return prev - 1;
         });
       }, 1000);
-      return () => clearInterval(timer);
-    }
-
+    } 
     // 2. Intro Zoom (Lens Flare)
-    if (stage === 'intro') {
-      const timer = setTimeout(() => {
+    else if (stage === 'intro') {
+      timer = setTimeout(() => {
         setStage('playing');
         if (audioRef.current && !isMuted) audioRef.current.play().catch(() => {});
       }, 2000);
-      return () => clearTimeout(timer);
-    }
-
+    } 
     // 3. Playing (Tự động kết thúc sau khi cuộn hết)
-    if (stage === 'playing') {
-      // Calculate duration: Cấp thời gian cho mỗi section (ảnh + comments + credits)
-      // Mỗi ảnh = 1 section (h-screen), tổng sections = images.length + 2 (comments + credits)
-      // Mỗi section = 3.5 giây (2s hiển thị + 1.5s delay để load ảnh tiếp theo)
+    else if (stage === 'playing') {
       const totalSections = images.length + 2;
       const duration = totalSections * 3.0 * 1000;
       console.log('Playing stage - Images:', images.length, 'Total sections:', totalSections, 'Duration:', duration);
-      const timer = setTimeout(() => setStage('end'), duration);
-      return () => clearTimeout(timer);
+      timer = setTimeout(() => setStage('end'), duration);
     }
+    
+    return () => {
+      clearTimeout(timer as ReturnType<typeof setTimeout>);
+      clearInterval(timer as ReturnType<typeof setInterval>);
+    };
   }, [stage, isMuted, images.length]);
 
   // Toggle Âm thanh

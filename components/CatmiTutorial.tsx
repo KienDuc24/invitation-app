@@ -120,6 +120,9 @@ export default function CatmiTutorial({ disabled = false }: CatmiTutorialProps) 
   const [isOpen, setIsOpen] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
   const [highlightRect, setHighlightRect] = useState<DOMRect | null>(null);
+  const [iconPosition, setIconPosition] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
 
   useEffect(() => {
     if (disabled || !CATMI_CONFIG.enabled) return;
@@ -203,12 +206,43 @@ export default function CatmiTutorial({ disabled = false }: CatmiTutorialProps) 
     setIsOpen(true);
   };
 
+  const handleIconMouseDown = (e: React.MouseEvent<HTMLButtonElement>) => {
+    setIsDragging(true);
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setDragOffset({
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top
+    });
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging) return;
+    
+    setIconPosition({
+      x: e.clientX - dragOffset.x,
+      y: e.clientY - dragOffset.y
+    });
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
   if (!isOpen) {
     return (
       <button
-        onClick={openTutorial}
-        className="fixed top-14 right-6 z-[9998] group"
-        title="Bấm để xem hướng dẫn"
+        onMouseDown={handleIconMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+        onClick={isDragging ? undefined : openTutorial}
+        className="fixed z-[9998] group cursor-grab active:cursor-grabbing"
+        style={{
+          left: iconPosition.x ? `${iconPosition.x}px` : 'auto',
+          right: !iconPosition.x ? '24px' : 'auto',
+          top: iconPosition.y ? `${iconPosition.y}px` : '56px',
+        }}
+        title="Bấm để xem hướng dẫn (kéo để di chuyển)"
       >
         <div className="relative bg-[#d4af37] rounded-full p-1.5 shadow-[0_0_12px_rgba(212,175,55,0.5)] hover:shadow-[0_0_20px_rgba(212,175,55,0.7)] transition-all duration-300 hover:scale-110 active:scale-95">
           <HelpCircle size={18} className="text-black" />
