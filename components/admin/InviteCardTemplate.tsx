@@ -33,8 +33,11 @@ const InviteCardTemplate = forwardRef<HTMLDivElement, InviteProps>(
 
         <div className="py-4">
             <p className="text-gray-400 text-sm italic mb-1">Trân trọng kính mời:</p>
-            {/* Tên khách - Phần quan trọng nhất */}
-            <p className="text-4xl font-serif text-[#fadd7d] font-bold tracking-wide line-clamp-1">
+            {/* Tên khách - Phần quan trọng nhất - scale font nếu tên dài */}
+            <p 
+              className={`text-[#fadd7d] font-bold tracking-wide ${guestName.length > 20 ? 'text-2xl' : guestName.length > 15 ? 'text-3xl' : 'text-4xl'}`}
+              style={{ fontFamily: "'Segoe UI', 'Trebuchet MS', sans-serif", fontVariantLigatures: 'no-common', letterSpacing: '0.05em' }}
+            >
                 {guestName}
             </p>
         </div>

@@ -80,7 +80,12 @@ export default function AdminPage() {
   const [selectedGuestForCard, setSelectedGuestForCard] = useState<any>(null);
   const [showCardModal, setShowCardModal] = useState(false);
   const [isDownloadingCard, setIsDownloadingCard] = useState(false);
-  const cardRef = useRef<HTMLDivElement>(null); 
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  // --- FILTER STATES ---
+  const [filterStatus, setFilterStatus] = useState<'all' | 'confirmed' | 'declined' | 'pending'>('all');
+  const [filterGroup, setFilterGroup] = useState<string>('all');
+  const [filterSearch, setFilterSearch] = useState<string>(''); 
 
   // --- 1. KHỞI TẠO AUDIO ---
   useEffect(() => {
@@ -817,14 +822,109 @@ export default function AdminPage() {
 
         {/* Các Tab khác (Overview/Chat) giữ logic cũ */}
         {activeTab === 'overview' && (
-           <div className="bg-[#111] border border-[#333] rounded-2xl md:rounded-[2rem] overflow-hidden shadow-xl animate-in fade-in">
+           <div className="space-y-4 md:space-y-6 animate-in fade-in">
+              {/* FILTER SECTION */}
+              <div className="bg-[#111] border border-[#333] rounded-2xl md:rounded-[2rem] p-4 md:p-6 shadow-xl space-y-3 md:space-y-4">
+                <h3 className="text-sm md:text-base font-bold text-white uppercase tracking-widest">Lọc khách</h3>
+                
+                {/* Search */}
+                <input 
+                  type="text" 
+                  placeholder="Tìm theo tên..." 
+                  value={filterSearch}
+                  onChange={(e) => setFilterSearch(e.target.value)}
+                  className="w-full bg-black border border-[#333] text-white text-xs md:text-sm p-2.5 md:p-3 rounded-lg md:rounded-xl focus:border-[#d4af37] outline-none transition-all"
+                />
+
+                {/* Status Filter */}
+                <div>
+                  <p className="text-[9px] md:text-[10px] text-gray-500 uppercase font-black tracking-widest mb-2">Trạng thái</p>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { value: 'all', label: 'Tất cả' },
+                      { value: 'confirmed', label: '✅ Có' },
+                      { value: 'declined', label: '❌ Bận' },
+                      { value: 'pending', label: '⏳ Chưa rep' }
+                    ].map(status => (
+                      <button
+                        key={status.value}
+                        onClick={() => setFilterStatus(status.value as any)}
+                        className={`px-3 md:px-4 py-1.5 md:py-2 rounded-lg text-[8px] md:text-[10px] font-bold uppercase tracking-widest transition-all ${
+                          filterStatus === status.value 
+                            ? 'bg-[#d4af37] text-black border border-[#d4af37]' 
+                            : 'bg-black border border-[#333] text-gray-400 hover:border-[#d4af37]/50'
+                        }`}
+                      >
+                        {status.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Group Filter */}
+                <div>
+                  <p className="text-[9px] md:text-[10px] text-gray-500 uppercase font-black tracking-widest mb-2">Nhóm</p>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => setFilterGroup('all')}
+                      className={`px-3 md:px-4 py-1.5 md:py-2 rounded-lg text-[8px] md:text-[10px] font-bold uppercase tracking-widest transition-all ${
+                        filterGroup === 'all' 
+                          ? 'bg-[#d4af37] text-black border border-[#d4af37]' 
+                          : 'bg-black border border-[#333] text-gray-400 hover:border-[#d4af37]/50'
+                      }`}
+                    >
+                      Tất cả
+                    </button>
+                    {[...new Set(guests.filter(g => !g.tags?.includes('admin')).flatMap(g => g.tags || ['Khách']))].map(tag => (
+                      <button
+                        key={tag}
+                        onClick={() => setFilterGroup(tag)}
+                        className={`px-3 md:px-4 py-1.5 md:py-2 rounded-lg text-[8px] md:text-[10px] font-bold uppercase tracking-widest transition-all ${
+                          filterGroup === tag 
+                            ? 'bg-[#d4af37] text-black border border-[#d4af37]' 
+                            : 'bg-black border border-[#333] text-gray-400 hover:border-[#d4af37]/50'
+                        }`}
+                      >
+                        {tag}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* TABLE */}
+              <div className="bg-[#111] border border-[#333] rounded-2xl md:rounded-[2rem] overflow-hidden shadow-xl">
               <div className="overflow-x-auto">
                 <table className="w-full text-xs md:text-sm text-left">
                   <thead className="text-[9px] md:text-[10px] text-gray-500 uppercase bg-[#1a1a1a] tracking-widest">
                     <tr><th className="px-3 md:px-6 py-3 md:py-5">Tên</th><th className="px-3 md:px-6 py-3 md:py-5">Nhóm</th><th className="px-3 md:px-6 py-3 md:py-5">Trạng thái</th><th className="px-3 md:px-6 py-3 md:py-5 hidden md:table-cell">Lời nhắn</th><th className="px-3 md:px-6 py-3 md:py-5">Hành động</th></tr>
                   </thead>
                   <tbody className="divide-y divide-[#222]">
-                    {guests.filter(g => !g.tags?.includes('admin')).map((guest) => (
+                    {guests.filter(g => {
+                      // Bỏ admin
+                      if (g.tags?.includes('admin')) return false;
+                      
+                      // Filter theo tên
+                      if (filterSearch && !g.name.toLowerCase().includes(filterSearch.toLowerCase())) return false;
+                      
+                      // Filter theo trạng thái
+                      if (filterStatus !== 'all') {
+                        if (filterStatus === 'confirmed' && (g.is_confirmed && g.attendance === 'Có tham dự')) {
+                          // OK - show this
+                        } else if (filterStatus === 'declined' && (g.is_confirmed && g.attendance === 'Bận')) {
+                          // OK - show this
+                        } else if (filterStatus === 'pending' && !g.is_confirmed) {
+                          // OK - show this
+                        } else {
+                          return false;
+                        }
+                      }
+                      
+                      // Filter theo nhóm
+                      if (filterGroup !== 'all' && !g.tags?.includes(filterGroup)) return false;
+                      
+                      return true;
+                    }).map((guest) => (
                       <tr key={guest.id} className="hover:bg-[#d4af37]/5 transition-colors">
                         <td className="px-3 md:px-6 py-3 md:py-4 font-bold text-xs md:text-sm italic truncate">{guest.name}</td>
                         <td className="px-3 md:px-6 py-3 md:py-4"><span className="bg-black border border-[#333] px-2 py-0.5 md:py-1 rounded text-[8px] md:text-[10px] text-gray-500 uppercase font-bold whitespace-nowrap">{guest.tags?.[0] || 'Khách'}</span></td>
@@ -846,7 +946,8 @@ export default function AdminPage() {
                   </tbody>
                 </table>
               </div>
-           </div>
+              </div>
+            </div>
         )}
 
         {activeTab === 'chat' && !selectedGroup && (
