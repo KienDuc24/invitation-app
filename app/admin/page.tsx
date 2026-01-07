@@ -5,24 +5,24 @@ import InviteCardTemplate from "@/components/admin/InviteCardTemplate";
 import { supabase } from "@/lib/supabase";
 import { toPng } from "html-to-image";
 import {
-  Calendar,
-  CheckCircle,
-  Download,
-  Hash,
-  Heart,
-  Info,
-  Loader2,
-  Lock,
-  Map,
-  MapPin,
-  MessageCircle,
-  MessageSquare,
-  Phone,
-  RefreshCw,
-  Send,
-  Ticket,
-  Users,
-  X
+    Calendar,
+    CheckCircle,
+    Download,
+    Hash,
+    Heart,
+    Info,
+    Loader2,
+    Lock,
+    Map,
+    MapPin,
+    MessageCircle,
+    MessageSquare,
+    Phone,
+    RefreshCw,
+    Send,
+    Ticket,
+    Users,
+    X
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
@@ -1330,8 +1330,8 @@ export default function AdminPage() {
 
       {/* CARD GENERATION MODAL */}
       {showCardModal && selectedGuestForCard && (
-        <div className="fixed inset-0 z-[110] bg-black/90 backdrop-blur-sm flex items-center justify-center p-2 md:p-4 animate-in fade-in">
-          <div className="w-full max-w-2xl bg-[#111] border border-[#333] rounded-2xl md:rounded-3xl overflow-hidden flex flex-col shadow-2xl animate-in zoom-in-95 max-h-[90vh]">
+        <div className="fixed inset-0 z-[110] bg-black/90 backdrop-blur-sm flex items-center justify-center p-2 md:p-4 animate-in fade-in overflow-y-auto">
+          <div className="w-full max-w-2xl bg-[#111] border border-[#333] rounded-2xl md:rounded-3xl overflow-hidden flex flex-col shadow-2xl animate-in zoom-in-95 my-auto">
             {/* Header */}
             <div className="flex items-center justify-between p-3 md:p-4 border-b border-[#222] bg-[#0a0a0a] flex-shrink-0">
               <h3 className="text-[#d4af37] font-bold uppercase text-xs md:text-sm tracking-widest flex items-center gap-2">
@@ -1348,8 +1348,8 @@ export default function AdminPage() {
               </button>
             </div>
 
-            {/* Preview */}
-            <div className="flex-1 overflow-y-auto p-4 md:p-6 bg-black/30 flex items-center justify-center">
+            {/* Preview - scrollable */}
+            <div className="overflow-y-auto p-4 md:p-6 bg-black/30 flex items-center justify-center min-h-[500px]">
               <div className="bg-white/5 p-2 md:p-4 rounded-xl border border-[#333] inline-block">
                 <InviteCardTemplate 
                   ref={cardRef}

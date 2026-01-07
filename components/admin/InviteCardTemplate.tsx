@@ -10,13 +10,20 @@ interface InviteProps {
   locationInfo?: string;
 }
 
+// Font stack hỗ trợ tiếng Việt tốt nhất
+const vietnameseFontStack = {
+  fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Noto Sans', sans-serif",
+  WebkitFontSmoothing: 'antialiased',
+  MozOsxFontSmoothing: 'grayscale'
+};
+
 const InviteCardTemplate = forwardRef<HTMLDivElement, InviteProps>(
   ({ guestName, guestUrl, eventName = "Lễ Tốt Nghiệp", timeInfo = "", locationInfo = "Hà Nội" }, ref) => {
   return (
     <div 
       ref={ref}
       className="w-[800px] h-[450px] bg-[#050505] text-white relative flex flex-row overflow-hidden font-sans shadow-2xl"
-      style={{ backgroundImage: `radial-gradient(circle at 30% 50%, #1a1a1a 0%, #000 100%)` }}
+      style={{ ...vietnameseFontStack, backgroundImage: `radial-gradient(circle at 30% 50%, #1a1a1a 0%, #000 100%)` }}
     >
       {/* --- PHẦN TRÁI (NỘI DUNG CHÍNH) --- */}
       <div className="flex-1 p-10 flex flex-col justify-between relative z-10">
@@ -28,7 +35,7 @@ const InviteCardTemplate = forwardRef<HTMLDivElement, InviteProps>(
             <h3 className="text-[#d4af37] text-lg uppercase tracking-[0.4em] font-bold mb-2">Lời mời tham dự</h3>
             <h1 
               className="text-3xl font-black text-white uppercase leading-tight line-clamp-2"
-              style={{ fontFamily: "Georgia, 'Times New Roman', serif", textTransform: 'uppercase' }}
+              style={{ ...vietnameseFontStack, textTransform: 'uppercase' }}
             >
                 {eventName}
             </h1>
@@ -39,7 +46,7 @@ const InviteCardTemplate = forwardRef<HTMLDivElement, InviteProps>(
             {/* Tên khách - Phần quan trọng nhất - scale font nếu tên dài */}
             <p 
               className={`text-[#fadd7d] font-bold tracking-wide ${guestName.length > 20 ? 'text-2xl' : guestName.length > 15 ? 'text-3xl' : 'text-4xl'}`}
-              style={{ fontFamily: "'Segoe UI', 'Trebuchet MS', sans-serif", fontVariantLigatures: 'no-common', letterSpacing: '0.05em' }}
+              style={{ ...vietnameseFontStack, fontVariantLigatures: 'no-common', letterSpacing: '0.05em' }}
             >
                 {guestName}
             </p>
@@ -47,7 +54,7 @@ const InviteCardTemplate = forwardRef<HTMLDivElement, InviteProps>(
 
         <div>
             <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">Thời gian & Địa điểm</p>
-            <p className="text-sm font-bold text-white">{timeInfo || "Xem chi tiết"} | {locationInfo}</p>
+            <p className="text-sm font-bold text-white" style={vietnameseFontStack}>{timeInfo || "Xem chi tiết"} | {locationInfo}</p>
         </div>
       </div>
 
