@@ -30,7 +30,7 @@ const STEPS = [
     id: 'card-view',
     gif: '/media/thinking.gif',
     title: '2. Xem thiệp (2D & 3D)',
-    content: 'Bấm "Xem thiệp" ở dưới. Chế độ 2D nhanh, 3D thì xoay được.',
+    content: 'Bấm "Xem thiệp" ở dưới. Đôi khi sẽ có lỗi hiển thị khi sử dụng IOS. Nếu muốn xem lại thông tin, hãy hỏi Catmi nhé!',
     highlight: '[data-tutorial-view-card]',
     isCompact: true,
     tabToActivate: null,
