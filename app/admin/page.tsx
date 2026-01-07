@@ -1,10 +1,13 @@
  "use client";
 
 import ChatGroup from "@/components/ChatGroup";
+import InviteCardTemplate from "@/components/admin/InviteCardTemplate";
 import { supabase } from "@/lib/supabase";
+import { toPng } from "html-to-image";
 import {
   Calendar,
   CheckCircle,
+  Download,
   Hash,
   Heart,
   Info,
@@ -17,6 +20,7 @@ import {
   Phone,
   RefreshCw,
   Send,
+  Ticket,
   Users,
   X
 } from "lucide-react";
@@ -70,7 +74,13 @@ export default function AdminPage() {
   const [adminUser, setAdminUser] = useState<any>(null);
   const [selectedConfessionDetail, setSelectedConfessionDetail] = useState<any>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
-  const SECRET_PIN = "2026"; 
+  const SECRET_PIN = "2026";
+  
+  // --- CARD GENERATION STATES ---
+  const [selectedGuestForCard, setSelectedGuestForCard] = useState<any>(null);
+  const [showCardModal, setShowCardModal] = useState(false);
+  const [isDownloadingCard, setIsDownloadingCard] = useState(false);
+  const cardRef = useRef<HTMLDivElement>(null); 
 
   // --- 1. KHỞI TẠO AUDIO ---
   useEffect(() => {
@@ -607,6 +617,37 @@ export default function AdminPage() {
     return () => { supabase.removeChannel(channel); };
   }, [isAuthenticated, adminUser]);
 
+  // --- HANDLE CARD DOWNLOAD ---
+  const handleDownloadCard = async () => {
+    if (!selectedGuestForCard || !cardRef.current) return;
+    
+    setIsDownloadingCard(true);
+    try {
+      // Wait for QR code to render
+      await new Promise(r => setTimeout(r, 100));
+      
+      const dataUrl = await toPng(cardRef.current, {
+        pixelRatio: 2,
+        quality: 0.95,
+        width: 800,
+        height: 450,
+      });
+      
+      const link = document.createElement('a');
+      link.href = dataUrl;
+      link.download = `Thiep_Moi_${selectedGuestForCard.name}.png`;
+      link.click();
+      
+      playNotiSound();
+      alert(`✅ Đã tải xuống: ${selectedGuestForCard.name}`);
+    } catch (error) {
+      console.error('Error downloading card:', error);
+      alert('❌ Lỗi: Không thể tải xuống thiệp mời');
+    } finally {
+      setIsDownloadingCard(false);
+    }
+  };
+
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-black flex flex-col items-center justify-center p-4">
@@ -780,7 +821,7 @@ export default function AdminPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-xs md:text-sm text-left">
                   <thead className="text-[9px] md:text-[10px] text-gray-500 uppercase bg-[#1a1a1a] tracking-widest">
-                    <tr><th className="px-3 md:px-6 py-3 md:py-5">Tên</th><th className="px-3 md:px-6 py-3 md:py-5">Nhóm</th><th className="px-3 md:px-6 py-3 md:py-5">Trạng thái</th><th className="px-3 md:px-6 py-3 md:py-5 hidden md:table-cell">Lời nhắn</th></tr>
+                    <tr><th className="px-3 md:px-6 py-3 md:py-5">Tên</th><th className="px-3 md:px-6 py-3 md:py-5">Nhóm</th><th className="px-3 md:px-6 py-3 md:py-5">Trạng thái</th><th className="px-3 md:px-6 py-3 md:py-5 hidden md:table-cell">Lời nhắn</th><th className="px-3 md:px-6 py-3 md:py-5">Hành động</th></tr>
                   </thead>
                   <tbody className="divide-y divide-[#222]">
                     {guests.filter(g => !g.tags?.includes('admin')).map((guest) => (
@@ -789,6 +830,17 @@ export default function AdminPage() {
                         <td className="px-3 md:px-6 py-3 md:py-4"><span className="bg-black border border-[#333] px-2 py-0.5 md:py-1 rounded text-[8px] md:text-[10px] text-gray-500 uppercase font-bold whitespace-nowrap">{guest.tags?.[0] || 'Khách'}</span></td>
                         <td className="px-3 md:px-6 py-3 md:py-4 font-bold text-xs">{guest.is_confirmed ? (guest.attendance === 'Có tham dự' ? <span className="text-green-500">Có</span> : <span className="text-red-500">Bận</span>) : <span className="text-gray-600">-</span>}</td>
                         <td className="px-3 md:px-6 py-3 md:py-4 text-gray-500 italic truncate max-w-xs hidden md:table-cell text-[9px] md:text-xs">{guest.wish || "-"}</td>
+                        <td className="px-3 md:px-6 py-3 md:py-4">
+                          <button 
+                            onClick={() => {
+                              setSelectedGuestForCard(guest);
+                              setShowCardModal(true);
+                            }}
+                            className="bg-[#d4af37]/10 hover:bg-[#d4af37]/20 text-[#d4af37] border border-[#d4af37]/30 px-2 md:px-3 py-1 md:py-1.5 rounded text-[9px] md:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 transition-all hover:scale-105 active:scale-95"
+                          >
+                            <Ticket size={12} /> Thiệp mời
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -1171,6 +1223,61 @@ export default function AdminPage() {
             >
               <X size={24} />
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* CARD GENERATION MODAL */}
+      {showCardModal && selectedGuestForCard && (
+        <div className="fixed inset-0 z-[110] bg-black/90 backdrop-blur-sm flex items-center justify-center p-2 md:p-4 animate-in fade-in">
+          <div className="w-full max-w-2xl bg-[#111] border border-[#333] rounded-2xl md:rounded-3xl overflow-hidden flex flex-col shadow-2xl animate-in zoom-in-95 max-h-[90vh]">
+            {/* Header */}
+            <div className="flex items-center justify-between p-3 md:p-4 border-b border-[#222] bg-[#0a0a0a] flex-shrink-0">
+              <h3 className="text-[#d4af37] font-bold uppercase text-xs md:text-sm tracking-widest flex items-center gap-2">
+                <Ticket size={16} /> Xưởng in thiệp
+              </h3>
+              <button 
+                onClick={() => {
+                  setShowCardModal(false);
+                  setSelectedGuestForCard(null);
+                }} 
+                className="p-1.5 md:p-2 hover:bg-[#222] rounded-full transition-colors"
+              >
+                <X size={18} className="text-gray-400"/>
+              </button>
+            </div>
+
+            {/* Preview */}
+            <div className="flex-1 overflow-y-auto p-4 md:p-6 bg-black/30 flex items-center justify-center">
+              <div className="bg-white/5 p-2 md:p-4 rounded-xl border border-[#333] inline-block">
+                <InviteCardTemplate 
+                  ref={cardRef}
+                  guestName={selectedGuestForCard.name}
+                  guestUrl={`https://invitation-app-brown.vercel.app/${selectedGuestForCard.id}`}
+                />
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="flex gap-2 md:gap-3 p-3 md:p-4 border-t border-[#222] bg-[#0a0a0a] flex-shrink-0">
+              <button 
+                onClick={() => {
+                  setShowCardModal(false);
+                  setSelectedGuestForCard(null);
+                }}
+                className="flex-1 border border-[#333] text-gray-400 font-bold py-2 md:py-3 rounded-lg md:rounded-xl uppercase tracking-widest text-xs hover:bg-[#1a1a1a] transition-all"
+              >
+                Đóng
+              </button>
+              <button 
+                onClick={handleDownloadCard}
+                disabled={isDownloadingCard}
+                className="flex-1 bg-[#d4af37] text-black font-bold py-2 md:py-3 rounded-lg md:rounded-xl flex items-center justify-center gap-2 uppercase tracking-widest text-xs hover:bg-[#fadd7d] transition-all disabled:opacity-50 active:scale-95"
+              >
+                {isDownloadingCard ? <Loader2 className="animate-spin" size={16}/> : <Download size={16}/>}
+                Tải xuống
+              </button>
+            </div>
           </div>
         </div>
       )}
