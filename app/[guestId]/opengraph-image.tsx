@@ -1,8 +1,13 @@
+import { createClient } from '@supabase/supabase-js';
 import { ImageResponse } from 'next/og';
-import { getGuestById } from '@/lib/supabase'; // 👈 Sửa import này
 
-// 1. Runtime nodejs để fetch được dữ liệu
-export const runtime = 'nodejs'; 
+// Buat Supabase client cho Edge Runtime
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+// 1. Runtime edge để fetch được dữ liệu và generate image
+export const runtime = 'edge'; 
 
 export const size = { width: 1200, height: 630 };
 export const contentType = 'image/png';
@@ -19,16 +24,16 @@ export default async function Image({ params }: Props) {
   // 4. Xử lý ID trước: Decode, trim để tránh lỗi
   const cleanId = decodeURIComponent(guestId || '').trim();
 
-  // 5. Gọi Supabase lấy thông tin ĐÚNG 1 KHÁCH (Thay vì lấy cả list)
-  const guest = await getGuestById(cleanId);
-  
-  // Debug log: Xem logs trên Vercel để biết chính xác
-  console.log(`[OG-DEBUG] ID: "${cleanId}" | Kết quả: ${guest ? guest.name : "KHÔNG THẤY"}`);
+  // 5. Gọi Supabase lấy thông tin ĐÚNG 1 KHÁCH
+  const { data: guest } = await supabase
+    .from('guests')
+    .select('name, is_confirmed')
+    .eq('id', cleanId)
+    .single();
 
   // Fallback nếu không tìm thấy khách
-  const guestName = guest ? guest.name : "Bạn tôi";
-  // Lưu ý: Đảm bảo biến isConfirmed khớp với những gì getGuestById trả về
-  const statusText = guest?.isConfirmed ? "Đã xác nhận tham gia" : "Trân trọng kính mời";
+  const guestName = guest?.name || "Bạn tôi";
+  const statusText = guest?.is_confirmed ? "Đã xác nhận tham gia" : "Trân trọng kính mời";
 
   return new ImageResponse(
     (
