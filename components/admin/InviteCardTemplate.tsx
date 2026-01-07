@@ -26,7 +26,10 @@ const InviteCardTemplate = forwardRef<HTMLDivElement, InviteProps>(
 
         <div>
             <h3 className="text-[#d4af37] text-lg uppercase tracking-[0.4em] font-bold mb-2">Lời mời tham dự</h3>
-            <h1 className="text-3xl font-black text-white uppercase leading-tight line-clamp-2">
+            <h1 
+              className="text-3xl font-black text-white uppercase leading-tight line-clamp-2"
+              style={{ fontFamily: "Georgia, 'Times New Roman', serif", textTransform: 'uppercase' }}
+            >
                 {eventName}
             </h1>
         </div>
