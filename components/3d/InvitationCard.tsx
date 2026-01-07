@@ -515,15 +515,7 @@ export default function MobileInvitation({
     const handleOpenCard = async () => {
         setIsOpen(true);
         try {
-            // Lock to landscape on mobile (Safari iOS không hỗ trợ)
-            try {
-                const screenOrientation = (screen as any).orientation;
-                if (screenOrientation && typeof screenOrientation.lock === 'function') {
-                    await screenOrientation.lock('landscape-primary').catch(() => {});
-                }
-            } catch (err) {
-                // Silent fail - Safari iOS không support orientation lock
-            }
+            // Bỏ auto rotate - cho user tự xoay
             
             // Request fullscreen (Safari iOS limited support)
             try {
