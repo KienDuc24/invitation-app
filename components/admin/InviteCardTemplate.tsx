@@ -5,9 +5,13 @@ import { forwardRef } from 'react';
 interface InviteProps {
   guestName: string;
   guestUrl: string;
+  eventName?: string;
+  timeInfo?: string;
+  locationInfo?: string;
 }
 
-const InviteCardTemplate = forwardRef<HTMLDivElement, InviteProps>(({ guestName, guestUrl }, ref) => {
+const InviteCardTemplate = forwardRef<HTMLDivElement, InviteProps>(
+  ({ guestName, guestUrl, eventName = "Lễ Tốt Nghiệp", timeInfo = "", locationInfo = "Hà Nội" }, ref) => {
   return (
     <div 
       ref={ref}
@@ -22,8 +26,8 @@ const InviteCardTemplate = forwardRef<HTMLDivElement, InviteProps>(({ guestName,
 
         <div>
             <h3 className="text-[#d4af37] text-lg uppercase tracking-[0.4em] font-bold mb-2">Lời mời tham dự</h3>
-            <h1 className="text-3xl font-black text-white uppercase leading-tight">
-                Lễ Tốt Nghiệp <br/> <span className="text-gray-500">Đức Kiên</span>
+            <h1 className="text-3xl font-black text-white uppercase leading-tight line-clamp-2">
+                {eventName}
             </h1>
         </div>
 
@@ -37,7 +41,7 @@ const InviteCardTemplate = forwardRef<HTMLDivElement, InviteProps>(({ guestName,
 
         <div>
             <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">Thời gian & Địa điểm</p>
-            <p className="text-sm font-bold text-white">20 . 11 . 2025  |  Hà Nội</p>
+            <p className="text-sm font-bold text-white">{timeInfo || "Xem chi tiết"} | {locationInfo}</p>
         </div>
       </div>
 

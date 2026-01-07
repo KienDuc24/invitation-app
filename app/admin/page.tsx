@@ -1254,6 +1254,9 @@ export default function AdminPage() {
                   ref={cardRef}
                   guestName={selectedGuestForCard.name}
                   guestUrl={`https://invitation-app-brown.vercel.app/${selectedGuestForCard.id}`}
+                  eventName="Lễ Tốt Nghiệp Đức Kiên"
+                  timeInfo={eventInfo.time_info}
+                  locationInfo={eventInfo.location_info || "Hà Nội"}
                 />
               </div>
             </div>
