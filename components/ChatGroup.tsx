@@ -296,7 +296,7 @@ export default function ChatGroup({ currentUser, groupTag, onBack, onLeaveGroup 
           </div>
       )}
 
-      <div className="flex-1 flex flex-col h-full w-full">
+      <div className="flex-1 flex flex-col h-full w-full pb-[250px] md:pb-0">
         {/* HEADER */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-[#333] bg-[#1a1a1a]/90 backdrop-blur-md sticky top-0 z-20 shadow-sm">
             <div className="flex items-center gap-3 overflow-hidden">
@@ -360,8 +360,8 @@ export default function ChatGroup({ currentUser, groupTag, onBack, onLeaveGroup 
           )}
         </div>
 
-        {/* INPUT */}
-        <div className="p-3 bg-[#1a1a1a] border-t border-[#333]">
+        {/* INPUT - Fixed position on mobile */}
+        <div className="p-3 bg-[#1a1a1a] border-t border-[#333] fixed bottom-0 left-0 right-0 z-40 md:relative md:bottom-auto md:left-auto md:right-auto md:z-auto max-h-[200px] overflow-y-auto">
           {files.length > 0 && (
               <div className="flex items-center gap-2 mb-3 bg-[#111] p-2 rounded-lg border border-[#333] overflow-x-auto scrollbar-hide w-full shadow-lg animate-in slide-in-from-bottom-2">
                   {files.map((file, idx) => (

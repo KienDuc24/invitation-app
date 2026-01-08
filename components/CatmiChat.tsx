@@ -490,7 +490,7 @@ export default function CatmiChat({ guestName, guestStatus, guestTags, guestInfo
 
       {/* 2. KHUNG CHAT - RIÊNG BIỆT */}
       {isOpen && (
-        <div className="fixed bottom-4 right-4 w-[340px] h-[500px] flex flex-col bg-white rounded-2xl shadow-2xl overflow-hidden border border-orange-200 animate-in slide-in-from-bottom-10 fade-in duration-300 z-[10000]" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="fixed bottom-4 right-4 w-[340px] h-[500px] flex flex-col bg-white rounded-2xl shadow-2xl overflow-hidden border border-orange-200 animate-in slide-in-from-bottom-10 fade-in duration-300 z-[10000] max-h-[calc(100vh-80px)]" onMouseDown={(e) => e.stopPropagation()}>
           {/* Header */}
           <div className="bg-gradient-to-r from-orange-500 to-red-600 p-3 flex justify-between items-center text-white shadow-md">
             <div className="flex items-center gap-3">
@@ -541,7 +541,7 @@ export default function CatmiChat({ guestName, guestStatus, guestTags, guestInfo
           </div>
 
           {/* Footer Input */}
-          <div className="p-3 bg-white border-t border-gray-100">
+          <div className="p-3 bg-white border-t border-gray-100 sticky bottom-0">
             {/* Suggestion Button */}
             <div className="flex gap-2 mb-2">
               <button 
@@ -557,7 +557,11 @@ export default function CatmiChat({ guestName, guestStatus, guestTags, guestInfo
             <div className="flex gap-2">
               <input
                 type="text" value={input} onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+                onKeyDown={(e) => {
+                  e.key === 'Enter' && handleSend();
+                  // Auto scroll input vào view
+                  setTimeout(() => e.currentTarget?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50);
+                }}
                 placeholder="Nhập tin nhắn..."
                 className="flex-1 bg-gray-100 rounded-full px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 text-black"
               />

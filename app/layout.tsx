@@ -1,5 +1,5 @@
 // app/layout.tsx
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Cinzel, Playfair_Display } from "next/font/google"; // Import font
 import "./globals.css";
 
@@ -22,6 +22,14 @@ export const metadata: Metadata = {
   icons: {
     icon: "/favicon.png",
   },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
