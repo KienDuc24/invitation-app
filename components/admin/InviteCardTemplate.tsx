@@ -32,10 +32,10 @@ const InviteCardTemplate = forwardRef<HTMLDivElement, InviteProps>(
         <div className="absolute bottom-6 left-6 w-16 h-16 border-b-2 border-l-2 border-[#d4af37]/50" />
 
         <div>
-            <h3 className="text-[#d4af37] text-lg uppercase tracking-[0.4em] font-bold mb-2">Lời mời tham dự</h3>
+            <h3 className="text-[#d4af37] text-lg uppercase tracking-[0.4em] font-bold mb-2" style={vietnameseFontStack}>Lời mời tham dự</h3>
             <h1 
-              className="text-3xl font-black text-white uppercase leading-tight line-clamp-2"
-              style={{ ...vietnameseFontStack, textTransform: 'uppercase' }}
+              className="text-3xl font-black text-white leading-normal whitespace-normal break-words"
+              style={{ ...vietnameseFontStack, textTransform: 'uppercase', wordBreak: 'break-word' }}
             >
                 {eventName}
             </h1>
@@ -53,8 +53,11 @@ const InviteCardTemplate = forwardRef<HTMLDivElement, InviteProps>(
         </div>
 
         <div>
-            <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">Thời gian & Địa điểm</p>
-            <p className="text-sm font-bold text-white" style={vietnameseFontStack}>{timeInfo || "Xem chi tiết"} | {locationInfo}</p>
+            <p className="text-xs text-gray-500 uppercase tracking-widest mb-2">Thời gian & Địa điểm</p>
+            <div className="space-y-1">
+              <p className="text-sm font-bold text-white" style={vietnameseFontStack}>🕐 {timeInfo || "Xem chi tiết"}</p>
+              <p className="text-sm font-bold text-white" style={vietnameseFontStack}>📍 {locationInfo}</p>
+            </div>
         </div>
       </div>
 
