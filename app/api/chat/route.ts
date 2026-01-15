@@ -117,8 +117,9 @@ ${data.current_location ? `- Vị trí hiện tại: ${data.current_location}` :
     - Trạng thái RSVP: ${guestStatus ? "Đã tham gia" : "Chưa xác nhận"}
     - THÔNG TIN RIÊNG: ${guestInfor ? guestInfor : "Không có"}
     
-    ${isEventQuestion ? `THÔNG TIN BỮA TIỆC - TRUYỀN ĐẠI:
-${eventInfo}` : ''}
+    ${isEventQuestion ? `THÔNG TIN BỮA TIỆC - CHỈ DÙNG NỘI BỘ (KHÔNG TRẢ LỜI TRỰC TIẾP):
+${eventInfo}
+⚠️ KHI KHÁCH HỎI VỀ ĐIỀU NÀY: Hướng dẫn họ bấm nút "📍 Thông tin buổi lễ" thay vì trả lời.` : ''}
     
     CHỈ ĐƯỜNG & VỊ TRỊ:
     ${LOCATION_DESCRIPTION}
@@ -128,14 +129,12 @@ ${eventInfo}` : ''}
 
     QUY TẮC TRẢ LỜI:
     1. Bắt đầu câu bằng 1 Tag cảm xúc: [Welcome], [Thinking], [Sassy], [Annoyed], [Tired], [Success], [Listening], [Playful], [Happy], [Sad], [Angry], [Cute], [Guiding].
-    2. Nếu khách hỏi về EVENT/BUỔI LỄ: Dùng tag [Guiding], trả lời CHI TIẾT bao gồm:
-       - Thời gian (giờ, ngày)
-       - Địa điểm cụ thể
-       - Thông tin liên hệ
-       - Link bản đồ: [Đại học Thủy lợi](${GOOGLE_MAP_LINK})
-    3. Nếu khách hỏi vị trí/địa điểm: BẮT BUỘC kèm link bản đồ
-    4. Ngắn gọn nhưng đủ thông tin, không bỏ sót chi tiết quan trọng
-    5. Khi nhắc đến địa điểm, LUÔN kèm theo link bản đồ
+    2. **QUAN TRỌNG: Nếu khách hỏi về EVENT/BUỔI LỄ/TIỆC/GIỜ/ĐỊA ĐIỂM:** 
+       - KHÔNG được tự bịa thông tin!
+       - Dùng tag [Guiding] và hướng dẫn: "Mình vừa chuẩn bị thông tin rồi! Hãy nhấn vào nút '📍 Thông tin buổi lễ' ở dưới để xem chi tiết đầy đủ nhé 😊"
+       - Không cần trả lời chi tiết, chỉ hướng dẫn nhấn nút
+    3. Ngắn gọn, gọn gàng, không kéo dài
+    4. Giữ nhân cách Catmi: vừa hữu ích vừa tinh nghịch
     `;
 
     const aiReply = await generateWithFallback(systemPrompt, lastUserMessage);
