@@ -77,7 +77,7 @@ const InviteCardTemplate = forwardRef<HTMLDivElement, InviteProps>(
             />
         </div>
         
-        <p className="text-[10px] text-gray-500 uppercase text-center tracking-wider mb-1">Quét mã check-in</p>
+        <p className="text-[10px] text-gray-500 uppercase text-center tracking-wider mb-1">Quét mã</p>
         <p className="text-[#d4af37] font-bold text-sm tracking-widest">INVITATION</p>
       </div>
     </div>

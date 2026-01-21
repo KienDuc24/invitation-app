@@ -9,16 +9,16 @@ import NetworkSection, { ChatGroupInfo } from "@/components/NetworkSection";
 import StoryTemplate from "@/components/StoryTemplate";
 import { supabase } from "@/lib/supabase";
 import {
-  ArrowLeft,
-  BellRing,
-  Camera,
-  Check,
-  Crown,
-  Download,
-  Edit3,
-  Heart,
-  HeartHandshake, ImagePlus,
-  Loader2, MessageCircle, Send, Share2, Ticket, Trash2, UserPlus, Users, X
+    ArrowLeft,
+    BellRing,
+    Camera,
+    Check,
+    Crown,
+    Download,
+    Edit3,
+    Heart,
+    HeartHandshake, ImagePlus,
+    Loader2, MessageCircle, Send, Share2, Ticket, Trash2, UserPlus, Users, X
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";

@@ -12,7 +12,6 @@ import {
     Heart,
     Info,
     Loader2,
-    Lock,
     Map,
     MapPin,
     MessageCircle,
@@ -36,8 +35,7 @@ interface AdminGroupInfo {
 }
 
 export default function AdminPage() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [pin, setPin] = useState("");
+  const [isAuthenticated, setIsAuthenticated] = useState(true);
   
   const [guests, setGuests] = useState<any[]>([]);
   const [confessions, setConfessions] = useState<any[]>([]);
@@ -74,7 +72,6 @@ export default function AdminPage() {
   const [adminUser, setAdminUser] = useState<any>(null);
   const [selectedConfessionDetail, setSelectedConfessionDetail] = useState<any>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
-  const SECRET_PIN = "2026";
   
   // --- CARD GENERATION STATES ---
   const [selectedGuestForCard, setSelectedGuestForCard] = useState<any>(null);
@@ -203,17 +200,7 @@ export default function AdminPage() {
     }
   }, [selectedConfessionDetail?.id, adminUser]);
 
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (pin === SECRET_PIN) {
-      setIsAuthenticated(true);
-      fetchData();
-      if (audioContextRef.current) audioContextRef.current.resume();
-    } else {
-      alert("Sai mã PIN!");
-      setPin("");
-    }
-  };
+
 
   // --- 2. FETCH DATA ---
   const fetchData = async () => {
@@ -652,21 +639,6 @@ export default function AdminPage() {
       setIsDownloadingCard(false);
     }
   };
-
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen bg-black flex flex-col items-center justify-center p-4">
-        <div className="w-full max-w-sm bg-[#111] border border-[#333] p-10 rounded-[2.5rem] text-center space-y-6 shadow-2xl">
-          <Lock className="text-[#d4af37] mx-auto" size={40} />
-          <h1 className="text-xl font-bold text-white uppercase tracking-widest font-sans">Khu vực Admin</h1>
-          <form onSubmit={handleLogin} className="space-y-4">
-            <input type="password" value={pin} onChange={(e) => setPin(e.target.value)} placeholder="Mã PIN..." className="w-full bg-[#0a0a0a] border border-[#333] text-white text-center text-2xl p-4 rounded-2xl focus:border-[#d4af37] outline-none font-sans" autoFocus />
-            <button className="w-full bg-[#d4af37] text-black font-bold py-4 rounded-2xl uppercase tracking-widest hover:bg-[#b89628] transition-all">Mở khóa</button>
-          </form>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white font-sans pb-20">

@@ -29,7 +29,7 @@ async function generateWithFallback(systemPrompt: string, userMessage: string) {
     try {
       const genAI = new GoogleGenerativeAI(apiKey);
       const model = genAI.getGenerativeModel({ 
-        model: "gemini-2.5-flash-preview-09-2025", // Check lại model này nếu lỗi thì đổi về gemini-1.5-flash
+        model: "gemini-2.5-flash-preview-09-2025", 
         systemInstruction: systemPrompt,
       });
 
