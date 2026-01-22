@@ -64,6 +64,94 @@ export async function POST(req: Request) {
 
     const lastUserMessage = messages[messages.length - 1]?.content || "Xin chào";
 
+    // --- SPECIAL CASE: BIRTHDAY GREETING FOR CUN-221 ---
+    const birthdayKeywords = ['chúc mừng sinh nhật', 'sinh nhật', 'happy birthday', 'hbd'];
+    const isBirthdayGreeting = birthdayKeywords.some(keyword => lastUserMessage.toLowerCase().includes(keyword));
+    
+    // Poems with proper Vietnamese poetry structure (vần điệu chuẩn)
+    const birthdayPoems = [
+      `[Happy] **Gửi người bạn cũ**
+Thoáng cái đã hai ba tuổi nhỉ? Bạn với tôi tri kỷ ngày nào. Nhớ thời Cầu Giấy lao xao, Trốn cô "chị X" vượt rào đi chơi.
+
+Chuyện ném bút máu rơi thuở ấy, Vết sẹo này vẫn thấy còn nguyên. Chỉ vì một tiếng "ừ" điên, Mà mày hờn dỗi, làm phiền lòng nhau.
+
+Giờ xa cách, phương nào có nhớ? Sinh nhật mày, tao chớ có quên. Chúc mày chân cứng đá mềm, Đường đời tấp nập, bình yên lối về. 💝`,
+
+      `[Happy] **Hoài niệm A1**
+Cầu Giấy trường xưa nắng ngập tràn, A1 ngày ấy chuyện lan man.
+Trốn cô "chị X" tìm vui thú, Ném bút toác đầu máu lệ chan.
+Một tiếng "ừ" buông sầu vạn dặm, Vài năm im ắng nhớ muôn ngàn.
+Hôm nay sinh nhật mừng tuổi mới, Chúc bạn đường đời mãi bình an. 🌟`,
+
+      `[Happy] **Bạn thân nhớ không?**
+Bạn thân A1 Cầu Giấy năm nao,
+Nhớ không mày tao Những ngày trốn học?
+
+Ghét bà "chị X" Nghịch ngợm đủ trò,
+Ném bút phát lo Đầu tao chảy máu.
+
+Tao "ừ" bố láo Mày dỗi quay lưng,
+Giờ đã người dưng? Hay là vẫn nhớ.
+
+Sinh nhật rực rỡ Tuổi mới hai ba (23),
+Vẫn là "đại ca" Trong lòng tao nhé! 💫`
+    ];
+    
+    // Sincere birthday wishes
+    const birthdayWishes = [
+      `[Happy] **Chúc mừng sinh nhật!**
+Chúc mừng sinh nhật mày. Lâu rồi không nói chuyện, nhưng tao chưa bao giờ quên mày - đứa bạn 'ngầu' nhất cái lớp A1 ngày xưa. Cái sẹo trên đầu tao bây giờ không còn đau nữa, mà nó nhắc tao nhớ là tụi mình đã từng có một thời điên rồ và vui vẻ đến thế nào. 
+
+Tuổi 23, tao chúc mày luôn bản lĩnh, sống hiên ngang như cách mày từng đối đầu với 'chị X'. Dù có thế nào, tao vẫn ở đây, vẫn trân trọng tình bạn của tụi mình.
+
+Sinh nhật vui vẻ nhé! 💝`,
+
+      `[Happy] **Gửi bạn cũ**
+Hôm nay sinh nhật mày, tự nhiên bao nhiêu chuyện cũ ùa về: những chiều trốn học, vụ cái bút, và cả cái lần tao vô tâm 'ừ' làm mày giận...
+
+Tao chỉ muốn nói là: Tao nhớ mày, và nhớ tình bạn của bọn mình. Chúc mày tuổi mới rực rỡ. Mong mày luôn cười tươi và hạnh phúc. 
+
+Happy Birthday! 🎂`
+    ];
+    
+    // Check if this is the initial birthday greeting or a follow-up choice
+    const userLower = lastUserMessage.toLowerCase();
+    const isPoetryChoice = userLower.includes('thơ') || userLower.includes('poem') || userLower.includes('poetry');
+    const isWishesChoice = userLower.includes('lời chúc') || userLower.includes('chúc') || userLower.includes('wishes');
+    
+    if ((guestName === 'cun-221' || guestName === 'Cùn') && isBirthdayGreeting) {
+      // Initial greeting - ask for choice
+      return NextResponse.json({ 
+        role: 'assistant', 
+        content: `[Happy] Cùn sinh nhật vui vẻ! 🎂
+Catmi muốn gửi lời chúc cho Cùn, nhưng phải chọn trước:
+👉 Cùn muốn nghe **thơ** chúc mừng?
+👉 Hay là muốn nghe **lời chúc** chân tình?
+Cùn chọn cái nào thì Catmi sẽ gửi tặng Cùn! ✨`,
+        includeMap: false
+      });
+    }
+    
+    // If user already chose poems
+    if ((guestName === 'cun-221' || guestName === 'Cùn') && isPoetryChoice && !isBirthdayGreeting) {
+      const randomPoem = birthdayPoems[Math.floor(Math.random() * birthdayPoems.length)];
+      return NextResponse.json({ 
+        role: 'assistant', 
+        content: randomPoem,
+        includeMap: false
+      });
+    }
+    
+    // If user already chose wishes
+    if ((guestName === 'cun-221' || guestName === 'Cùn') && isWishesChoice && !isBirthdayGreeting) {
+      const randomWish = birthdayWishes[Math.floor(Math.random() * birthdayWishes.length)];
+      return NextResponse.json({ 
+        role: 'assistant', 
+        content: randomWish,
+        includeMap: false
+      });
+    }
+
     // --- FETCH EVENT INFO từ Supabase ---
     let eventInfo = "";
     try {

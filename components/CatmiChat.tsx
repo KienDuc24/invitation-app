@@ -490,7 +490,7 @@ export default function CatmiChat({ guestName, guestStatus, guestTags, guestInfo
 
       {/* 2. KHUNG CHAT - RIÊNG BIỆT */}
       {isOpen && (
-        <div className="fixed bottom-4 right-4 w-[340px] h-[500px] flex flex-col bg-white rounded-2xl shadow-2xl overflow-hidden border border-orange-200 animate-in slide-in-from-bottom-10 fade-in duration-300 z-[10000] max-h-[calc(100vh-80px)]" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="fixed bottom-4 right-4 w-[340px] h-[500px] flex flex-col rounded-2xl shadow-2xl overflow-hidden border border-orange-200 animate-in slide-in-from-bottom-10 fade-in duration-300 z-[10000] max-h-[calc(100vh-80px)]" style={{backgroundColor: '#ffffff'}} onMouseDown={(e) => e.stopPropagation()}>
           {/* Header */}
           <div className="bg-gradient-to-r from-orange-500 to-red-600 p-3 flex justify-between items-center text-white shadow-md">
             <div className="flex items-center gap-3">
@@ -515,7 +515,7 @@ export default function CatmiChat({ guestName, guestStatus, guestTags, guestInfo
           </div>
 
           {/* Body Chat */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-orange-50/30 scroll-smooth">
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 scroll-smooth" style={{backgroundColor: '#ffffff'}}>
             {messages.map((msg, idx) => (
               <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                  {msg.role !== 'user' && (
@@ -541,7 +541,7 @@ export default function CatmiChat({ guestName, guestStatus, guestTags, guestInfo
           </div>
 
           {/* Footer Input */}
-          <div className="p-3 bg-white border-t border-gray-100 sticky bottom-0">
+          <div className="p-3 border-t border-gray-100 sticky bottom-0" style={{backgroundColor: '#ffffff'}}>
             {/* Suggestion Button */}
             <div className="flex gap-2 mb-2">
               <button 

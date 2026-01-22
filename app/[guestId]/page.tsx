@@ -59,12 +59,11 @@ export default async function GuestPage({ params }: GuestPageProps) {
 
   return (
     <>
-      {/* 1. Giao diện chính */}
       {canAccessDashboard ? (
-        <GuestDashboard guest={guest} />
+        <GuestDashboard guest={guest} guestId={guestId} />
       ) : (
-        <MobileInvitation 
-          guestName={guest.name} 
+        <MobileInvitation
+          guestName={guest.name}
           guestId={guest.id}
           isConfirmed={false}
           initialAttendance={guest.attendance}

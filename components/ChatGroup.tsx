@@ -1,5 +1,6 @@
 "use client";
 
+import { getAvatarUrl } from "@/lib/avatarHelper";
 import { supabase } from "@/lib/supabase";
 import {
     ArrowDown,
@@ -203,7 +204,7 @@ export default function ChatGroup({ currentUser, groupTag, onBack, onLeaveGroup 
         imageUrls = imageUrls.filter(url => url); // Loại bỏ URLs rỗng
       }
       
-      const userAvatar = currentUser.avatar_url || currentUser.shortName || currentUser.name?.charAt(0) || '?';
+      const userAvatar = getAvatarUrl(currentUser.avatar_url, currentUser.name);
 
       const { error } = await supabase.from('messages').insert({ 
           group_tag: groupTag, 
@@ -324,12 +325,21 @@ export default function ChatGroup({ currentUser, groupTag, onBack, onLeaveGroup 
             const isMe = String(msg.sender_id) === String(currentUser.id);
             const isHost = msg.sender_name?.includes("(Chủ tiệc)") || msg.sender_name?.includes("Admin");
             const imageUrls = msg.image_url ? (msg.image_url.startsWith('[') ? JSON.parse(msg.image_url) : [msg.image_url]) : [];
+            const avatarUrl = isHost ? null : getAvatarUrl(msg.sender_avatar, msg.sender_name);
             return (
               <div key={msg.id || index} className={`flex gap-3 ${isMe ? "flex-row-reverse" : ""}`}>
                 <div className="flex flex-col items-center gap-1">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold border overflow-hidden ${isHost ? "bg-black border-[#d4af37] text-[#d4af37]" : "bg-[#333] border-[#444] text-white"}`}>
-                        {isHost ? <Crown size={12} fill="#d4af37" /> : msg.sender_avatar && msg.sender_avatar.startsWith("http") ? <img src={msg.sender_avatar} className="w-full h-full object-cover" alt="avt"/> : <span className="uppercase">{msg.sender_avatar || msg.sender_name?.charAt(0) || '?'}</span>}
-                    </div>
+                    {isHost ? (
+                      <div className="w-8 h-8 rounded-full flex items-center justify-center bg-black border-2 border-[#d4af37] flex-shrink-0">
+                        <Crown size={12} fill="#d4af37" />
+                      </div>
+                    ) : avatarUrl ? (
+                      <img src={avatarUrl} alt={msg.sender_name} className="w-8 h-8 rounded-full border border-[#444] flex-shrink-0 object-cover" />
+                    ) : (
+                      <div className="w-8 h-8 rounded-full border border-[#444] flex-shrink-0 bg-[#333] flex items-center justify-center text-[10px] font-bold">
+                        {msg.sender_name?.charAt(0) || '?'}
+                      </div>
+                    )}
                 </div>
                 <div className={`max-w-[75%] space-y-1 ${isMe ? "items-end flex flex-col" : "items-start flex flex-col"}`}>
                     {!isMe && <span className="text-[10px] text-gray-500 ml-1">{msg.sender_name}</span>}

@@ -1,6 +1,7 @@
 "use client";
 
 import InvitationCard from "@/components/3d/InvitationCard";
+import BirthdayOverlay from "@/components/BirthdayOverlay";
 import CatmiChat from "@/components/CatmiChat";
 import CatmiTutorial from "@/components/CatmiTutorial";
 import ChatGroup from "@/components/ChatGroup";
@@ -9,16 +10,16 @@ import NetworkSection, { ChatGroupInfo } from "@/components/NetworkSection";
 import StoryTemplate from "@/components/StoryTemplate";
 import { supabase } from "@/lib/supabase";
 import {
-    ArrowLeft,
-    BellRing,
-    Camera,
-    Check,
-    Crown,
-    Download,
-    Edit3,
-    Heart,
-    HeartHandshake, ImagePlus,
-    Loader2, MessageCircle, Send, Share2, Ticket, Trash2, UserPlus, Users, X
+  ArrowLeft,
+  BellRing,
+  Camera,
+  Check,
+  Crown,
+  Download,
+  Edit3,
+  Heart,
+  HeartHandshake, ImagePlus,
+  Loader2, MessageCircle, Send, Share2, Ticket, Trash2, UserPlus, Users, X
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
@@ -45,9 +46,11 @@ const GROUP_NAMES: Record<string, string> = {
 
 interface DashboardProps {
   guest: any;
+  guestId?: string;
 }
 
-export default function GuestDashboard({ guest }: DashboardProps) {
+export default function GuestDashboard({ guest, guestId }: DashboardProps) {
+  const [showBirthdayTutorial, setShowBirthdayTutorial] = useState(false);
   const [activeTab, setActiveTab] = useState<'wish' | 'chat' | 'card'>('chat');
   const [cardLoading, setCardLoading] = useState(true);
   const [selectedChatGroup, setSelectedChatGroup] = useState<string | null>(null); // Fullscreen chat group
@@ -141,6 +144,15 @@ export default function GuestDashboard({ guest }: DashboardProps) {
     window.addEventListener('tutorial-tab-change', handleTutorialTabChange);
     return () => window.removeEventListener('tutorial-tab-change', handleTutorialTabChange);
   }, []);
+
+  // --- BIRTHDAY TUTORIAL FOR CÙN ---
+  useEffect(() => {
+    const id = guestId || guest?.id;
+    // Always show birthday tutorial for Cùn on first visit
+    if (id === 'cun-221') {
+      setShowBirthdayTutorial(true);
+    }
+  }, [guestId, guest?.id]);
 
   // --- 1. KHỞI TẠO AUDIO CONTEXT ---
   useEffect(() => {
@@ -1566,6 +1578,11 @@ export default function GuestDashboard({ guest }: DashboardProps) {
 
   return (
     <>
+      {/* Birthday Tutorial for Cùn */}
+      {(guestId === 'cun-221' || guest?.id === 'cun-221') && showBirthdayTutorial && (
+        <BirthdayOverlay onClose={() => setShowBirthdayTutorial(false)} />
+      )}
+
       <CatmiTutorial />
       {activeTab === 'card' ? (
         // Hiển thị thiệp khi tab là 'card' - Fullscreen wrapper
